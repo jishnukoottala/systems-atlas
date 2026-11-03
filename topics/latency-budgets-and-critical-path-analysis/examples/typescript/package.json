@@ -1,0 +1,19 @@
+{
+  "name": "latency-budgets-and-critical-path-analysis",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node src/index.ts",
+    "check": "tsc --noEmit",
+    "test": "node --test src/*.test.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "24.0.0",
+    "typescript": "5.8.3"
+  }
+}

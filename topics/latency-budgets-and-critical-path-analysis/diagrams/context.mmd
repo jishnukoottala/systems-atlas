@@ -1,0 +1,17 @@
+---
+title: "Context: a checkout journey and where its budget goes"
+---
+flowchart LR
+    C["Client"] -->|"HTTPS, target p99 300 ms"| G["Gateway: 5 ms"]
+    G --> A["Auth: 10 ms"]
+    A --> CA["Cart: 25 ms, owns carts"]
+    CA -->|"gRPC, parallel"| I["Inventory: 60 ms, owns stock"]
+    CA -->|"gRPC, parallel"| P["Pricing: 40 ms"]
+    CA -->|"gRPC, parallel"| F["Fraud: 90 ms, on critical path"]
+    I --> PAY
+    P --> PAY
+    F --> PAY
+    subgraph ext["External provider: outside our control"]
+      PAY["Payment: 120 ms"]
+    end
+    PAY --> W["Order write: 15 ms, owns orders"]

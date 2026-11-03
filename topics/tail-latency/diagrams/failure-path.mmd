@@ -1,0 +1,11 @@
+---
+title: "Failure path: hedging amplifies overload"
+---
+flowchart TD
+    A["Load rises, leaves slow down"] --> B["Most calls exceed the hedge delay"]
+    B --> C{"Hedge budget in place?"}
+    C -->|"no"| D["Traffic nearly doubles"]
+    D --> E["Leaves slow further"]
+    E --> B
+    C -->|"yes"| F["Hedges capped at a small percentage"]
+    F --> G["Load shedding handles the overload"]

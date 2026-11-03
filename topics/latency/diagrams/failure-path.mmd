@@ -1,0 +1,12 @@
+---
+title: "Failure path: rising utilization turns into a latency collapse"
+---
+flowchart TD
+    A["Traffic reaches 90 percent utilization"] --> B["Queue wait grows non-linearly"]
+    B --> C["Latency exceeds client timeout"]
+    C --> D["Clients retry, adding load"]
+    D --> E["Utilization reaches 100 percent"]
+    E --> F["Servers work on requests whose clients already gave up"]
+    F --> C
+    E -->|"detected: queue age and saturation"| G["Shed load and cap retries"]
+    G --> H["Queue drains and latency recovers"]

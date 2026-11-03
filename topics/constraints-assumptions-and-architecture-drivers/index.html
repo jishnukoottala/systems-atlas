@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Constraints, assumptions, and architecture drivers | Systems Atlas</title>
+<meta name="description" content="A constraint is a fixed limit on the solution space. An assumption is something believed true but not yet verified. An architecture driver is a requirement, con">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="A002">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Constraints, assumptions, and architecture drivers</h1>
+<p class="meta-line">A002 · Foundational · about 1.3 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>A constraint is a fixed limit on the solution space. An assumption is something believed true but not yet verified. An architecture driver is a requirement, constraint, or assumption that, if it changed, would change the structure of the system. Separating the three tells you what you can negotiate, what you must test, and what deserves your design attention.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Most failed architectures were reasonable given their beliefs, and those beliefs turned out to be wrong. A team that writes &quot;reads outnumber writes 50 to 1&quot; as a fact builds read replicas and a cache, then learns that a new feature made writes dominant. Written as an assumption with an owner and a date, the same sentence would have triggered a check. Experienced engineers also ask whether a constraint is real, since many supposed constraints are merely old decisions that nobody re-examined.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/functional-and-non-functional-requirements/index.html">Functional and non-functional requirements</a></p><h3 id="study-time">Study time</h3><p>About 1.3 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p>Decision criteria and trade-off matrices <span class="muted">(not yet written)</span>, Architecture decision records <span class="muted">(not yet written)</span>, <a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a>, <a href="../../topics/functional-and-non-functional-requirements/index.html">Functional and non-functional requirements</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Classify statements as requirement, constraint, or assumption, and explain why it matters.</li><li>Challenge a constraint by finding its owner and its actual cost.</li><li>Identify drivers by testing what would change the structure.</li><li>Use sensitivity analysis to decide which assumptions to verify first.</li><li>Keep a register so assumptions turn into evidence, not folklore.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A logistics company plans a tracking platform for 40,000 vehicles reporting location every 10 seconds. The kickoff document says: &quot;must use the corporate Oracle cluster, launch in Q3, read-heavy workload, vehicles always online&quot;. Each item sounds like a fact. When questioned, they turn out to be four different things.</p>
+<p>The Oracle mandate came from a licensing decision made six years ago, and the licence renews in 14 months, so the mandate is a negotiable constraint with a known owner. Q3 is a contractual date with penalties, which is a hard constraint. &quot;Read-heavy&quot; is an unverified assumption, and arithmetic refutes it: 40,000 ÷ 10 s is 4,000 writes per second, compared with a forecast of 300 dashboard reads per second. &quot;Always online&quot; is false: vehicles cross dead zones for up to 20 minutes, so devices must buffer and upload out of order. Two of the four would have produced the wrong architecture. Catching them took one meeting and one line of arithmetic.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Planning a building on a plot. Constraints are the plot boundary and zoning law. Assumptions are what you believe about the ground before anyone has drilled a borehole. Drivers are the factors that shape the foundation: if the ground is clay and not rock, the whole structure changes, while the paint color changes nothing.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Geology does not change after you survey it, while software assumptions decay continuously as traffic, teams, and markets shift. Software constraints are also more negotiable than zoning law, since many were set by people still employed down the hall. So unlike a survey done once, assumptions need review dates, and constraints deserve questioning.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> statements, owners, evidence, decisions that depend on statements.</li><li><strong>State:</strong> an assumption is unverified, confirmed, or refuted. A constraint is active, challenged, or lifted.</li><li><strong>Flow:</strong> a statement is classified, its impact is estimated, cheap checks run first, and the outcome flows to decisions that rest on it.</li><li><strong>Invariant 1:</strong> every assumption has an owner and a verify-by date.</li><li><strong>Invariant 2:</strong> no decision rests on a refuted assumption without being reopened.</li><li><strong>Invariant 3:</strong> every constraint names who can lift it.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Test</th><th scope="col">Action</th></tr></thead><tbody><tr><td>Requirement</td><td>Would users or the business notice if it were missing?</td><td>Agree on and measure it. See <a href="../../topics/functional-and-non-functional-requirements/index.html">Functional and non-functional requirements</a></td></tr><tr><td>Hard constraint</td><td>Does breaking it cause legal, contractual, or physical failure?</td><td>Design within it</td></tr><tr><td>Soft constraint</td><td>Is it a policy or an earlier decision somebody could change?</td><td>Price it, then ask its owner</td></tr><tr><td>Assumption</td><td>Could evidence show that it is false?</td><td>Verify, in order of impact</td></tr><tr><td>Driver</td><td>Would changing it change the structure?</td><td>Spend design time here</td></tr><tr><td>Quality attribute scenario</td><td>Stimulus, environment, response, and measure</td><td>Use it to test a driver</td></tr></tbody></table></div>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>A design is a function from beliefs to structure. Accuracy of belief therefore bounds the accuracy of design. Beliefs differ in two respects: how uncertain they are, and how much the design would change if they were wrong. Both matter, and the product of the two sets the order of work. A very uncertain belief with no design impact can stay uncertain. A nearly certain belief with huge impact deserves a cheap check.</p>
+<p>Drivers are a small subset. Consider two applications: a read-heavy catalog and a write-heavy telemetry system. Both have dozens of requirements, but only a few determine whether the store is a B-tree or an LSM tree, or whether you partition. To test a candidate driver, ask &quot;if this were ten times larger or smaller, would we draw a different diagram?&quot; If not, it may be important, but it does not drive architecture.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p>Risk exposure is commonly estimated as probability × impact. With the sensitivity method in this lesson, compute the output at each input's low and high bound with the others held at base:</p>
+<ul><li>spread(x) = |output(x low) − output(x high)|</li><li>Rank inputs by spread. A bar chart of the result is called a tornado chart.</li><li>A key test: does the range of the output cross a design threshold? An input with a smaller spread that crosses a threshold matters more than a larger spread that doesn't.</li></ul>
+<p>Worked example: nodes = DAU × requests per user ÷ 86,400 s × peak ratio ÷ rps per node. With 5,000,000 DAU, 30 requests, ratio 3, and 1,000 rps per node, peak is 5,208 rps, needing 6 nodes. Varying DAU from 2,000,000 to 20,000,000 gives 3 to 21 nodes, which crosses a 16-node limit. The other inputs stay under the limit. So DAU is what to investigate first.</p>
+<h3 id="complexity">Complexity</h3>
+<p>The one-at-a-time analysis costs 2n model evaluations for n inputs. A full grid costs 3^n at three levels per input, which explains why teams don't do it by hand: 10 inputs need 59,049 evaluations. Checking a register is O(a) in the number of assumptions a.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>List every statement from the brief, without filtering.</li><li>Classify each as requirement, hard constraint, soft constraint, or assumption. Reject &quot;fact&quot; as a category unless it has evidence attached.</li><li>For each constraint, find the owner and ask what would happen if it were removed.</li><li>For each assumption, estimate impact and assign an owner and a date.</li><li>Run sensitivity analysis on the numeric assumptions, and verify the highest-impact items first.</li><li>Name three to five drivers. Check each with the ten-times test.</li><li>Link decisions to the statements they rest on, so that refuting one reopens the others.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-assumption"><figcaption>State of an assumption from recording to resolution</figcaption><pre class="mermaid" role="img" aria-label="State diagram. An assumption begins unverified. Evidence moves it to confirmed or refuted. Passing its date without evidence moves it to overdue. Refuted assumptions reopen dependent decisions. Confirmed assumptions return to unverified when conditions change.">stateDiagram-v2
+    [*] --&gt; Unverified: recorded with owner and date
+    Unverified --&gt; Confirmed: evidence supports it
+    Unverified --&gt; Refuted: evidence contradicts it
+    Unverified --&gt; Overdue: date passes with no evidence
+    Overdue --&gt; Confirmed: evidence supports it
+    Overdue --&gt; Refuted: evidence contradicts it
+    Confirmed --&gt; Unverified: conditions change
+    Refuted --&gt; DecisionsReopened: dependent decisions reviewed
+    DecisionsReopened --&gt; [*]</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. An assumption begins unverified. Evidence moves it to confirmed or refuted. Passing its date without evidence moves it to overdue. Refuted assumptions reopen dependent decisions. Confirmed assumptions return to unverified when conditions change.</p></figure>
+<p>The transition from confirmed back to unverified is the one most teams leave out. A traffic mix confirmed last year has become a belief again if the product has changed since.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Several teams may rely on one assumption at once and each may change it. Marketing runs a campaign, a mobile team adds polling, and each one's change looks small. Treat shared assumptions like shared mutable state: one owner, visible changes, and a way to notify dependents. The example register records <code>dependents</code> for this reason.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Hard constraints come first, because they eliminate options cheaply. Sort assumptions by impact × uncertainty ÷ cost to check. Be sure that the statements agree with each other. The tracking scenario above had &quot;read-heavy&quot; and &quot;40,000 vehicles every 10 seconds&quot; in the same document, and they contradict each other once you do the arithmetic.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>The assumption's owner is the person best placed to verify it, often outside engineering. A constraint is owned by whoever can lift it: legal, finance, or a platform team. The architect owns the register and the link to decisions, without necessarily owning the answers. See Architecture decision records <span class="muted">(not yet written)</span> for recording the outcome.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: where drivers come from and what they shape</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Business, legal, finance, and the team's skills supply statements to a classification step. Those split into hard constraints, soft constraints, assumptions, and requirements. Drivers selected from these shape architecture decisions.">flowchart LR
+    B[&quot;Business brief&quot;] --&gt; C[&quot;Classify each statement&quot;]
+    L[&quot;Legal and compliance&quot;] --&gt; C
+    F[&quot;Finance and vendors&quot;] --&gt; C
+    T[&quot;Team skills and existing systems&quot;] --&gt; C
+    C --&gt; H[&quot;Hard constraints&quot;]
+    C --&gt; S[&quot;Soft constraints: owner, cost&quot;]
+    C --&gt; A[&quot;Assumptions: owner, date&quot;]
+    C --&gt; R[&quot;Requirements: targets&quot;]
+    H --&gt; D[&quot;Architecture drivers (top 3 to 5)&quot;]
+    S --&gt; D
+    A --&gt; D
+    R --&gt; D
+    D --&gt;|&quot;shape&quot;| X[&quot;Architecture decisions and ADRs&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Business, legal, finance, and the team's skills supply statements to a classification step. Those split into hard constraints, soft constraints, assumptions, and requirements. Drivers selected from these shape architecture decisions.</p></figure>
+<p>Everything flows through classification, as that is where false facts get caught. Drivers can come from any category. They aren't simply the top of the requirements list: a team's lack of Kubernetes experience can be a driver as legitimate as a latency target.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the register and sensitivity tools</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. A JSON register in Git is read by the TypeScript checker, which gates CI. A numeric model reads ranges in the Python sensitivity tool, and its ranked swings tell the owner what to verify first, updating the register.">flowchart LR
+    REG[&quot;register.json in Git: owned by the architect&quot;] --&gt;|&quot;read&quot;| TS[&quot;TypeScript checker: parse and assess&quot;]
+    TS --&gt;|&quot;exit code 0, 1, or 2&quot;| CI[&quot;CI gate&quot;]
+    TS --&gt;|&quot;JSON log lines&quot;| LOG[&quot;Build log&quot;]
+    IN[&quot;Numeric ranges&quot;] --&gt; PY[&quot;Python sensitivity: 2n model runs&quot;]
+    PY --&gt;|&quot;ranked swings, threshold crossings&quot;| O[&quot;Assumption owners&quot;]
+    O --&gt;|&quot;evidence updates status&quot;| REG</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. A JSON register in Git is read by the TypeScript checker, which gates CI. A numeric model reads ranges in the Python sensitivity tool, and its ranked swings tell the owner what to verify first, updating the register.</p></figure>
+<p>The checker enforces discipline and the sensitivity tool sets priority. The loop runs through people: the tools do not produce evidence, they only show who needs to find some, and when.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: challenging a constraint</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. An architect asks a platform owner about a mandated database. The owner says the reason was licensing, which ends soon. The architect prices both options, and finance and the owner agree to lift the mandate for one workload, which is recorded in an ADR.">sequenceDiagram
+    participant A as Architect
+    participant O as Platform owner
+    participant F as Finance
+    participant D as ADR
+    A-&gt;&gt;O: Why is the shared Oracle cluster mandatory?
+    O--&gt;&gt;A: Licence cost, and a small DBA team
+    A-&gt;&gt;F: Option A costs X in licences. Option B costs Y in operations
+    F--&gt;&gt;A: Licence renews in 14 months and is not fixed
+    A-&gt;&gt;O: Can telemetry use another store, if your team does not run it?
+    O--&gt;&gt;A: Yes, if the owning team carries on-call
+    A-&gt;&gt;D: Record the lifted constraint, conditions, and owner</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. An architect asks a platform owner about a mandated database. The owner says the reason was licensing, which ends soon. The architect prices both options, and finance and the owner agree to lift the mandate for one workload, which is recorded in an ADR.</p></figure>
+<p>Note the shape of the request. The architect does not argue against the rule: they find the reason behind it and meet that reason in another way. The DBA team's concern was operational load, and accepting on-call resolved it. This is usually the fastest route past a soft constraint.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: an assumption believed to be fact</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. A read-heavy belief leads to replicas and caching. A new feature makes writes dominate, the single primary saturates, and an emergency sharding project starts. A register with a date would have triggered a check before saturation.">flowchart TD
+    A[&quot;Read-heavy stated as fact&quot;] --&gt; B[&quot;Design: one primary, replicas, caching&quot;]
+    B --&gt; C[&quot;New feature: writes grow 20x&quot;]
+    C --&gt; D[&quot;Primary write saturation&quot;]
+    D --&gt; E[&quot;Replication lag and failed writes&quot;]
+    E --&gt; F[&quot;Emergency sharding under load&quot;]
+    A -.-&gt;|&quot;recorded with owner and date&quot;| G[&quot;Quarterly check of the write ratio&quot;]
+    G -.-&gt;|&quot;early warning&quot;| H[&quot;Planned migration before saturation&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. A read-heavy belief leads to replicas and caching. A new feature makes writes dominate, the single primary saturates, and an emergency sharding project starts. A register with a date would have triggered a check before saturation.</p></figure>
+<p>Solid lines show what happens by default, and dashed lines show the alternative. The register costs very little and gives lead time, which is what changes an emergency into a plan. Nothing in the dashed path requires predicting the feature: only noticing that the belief no longer holds.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>Catches false facts cheaply, before any design work relies on them.</li><li>Focuses verification on what actually changes decisions.</li><li>Surfaces negotiable constraints that would otherwise cost money indefinitely.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Takes senior time, and challenging constraints can be politically awkward.</li><li>A register becomes a graveyard unless it is tied to a gate or a review.</li><li>Sensitivity ranges are themselves guesses.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>Risk register:</strong> broader, and tracks delivery risks as well as architectural ones.</li><li><strong>Spikes and prototypes:</strong> the most direct way to check an assumption, at higher cost per check.</li><li><strong>Assumption mapping workshop:</strong> fast cross-functional sorting by importance and evidence.</li><li><strong>ATAM-style review:</strong> a structured method for finding sensitivity points and trade-offs in heavier programs.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>For anything hard to reverse, anything spanning several teams, and any project whose brief contains numbers nobody has measured.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Skip the formal register for short-lived, cheap-to-replace work. A short list in the pull request description is enough. Do not perform sensitivity analysis on inputs that cannot change the decision.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>A confirmed assumption is more than a year old, or the product has changed materially.</li><li>A constraint's owner, contract, or regulation has changed.</li><li>A driver no longer passes the ten-times test.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>Telemetry scenario: 40,000 vehicles, each reporting every 10 s, with 200 bytes per message, and buffered upload after dead zones. The peak recovery burst is assumed: 20% of the fleet reconnects within one minute after a regional outage, each with 20 minutes of buffered points.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Steady writes per second = vehicles ÷ report interval in seconds.</li><li>Backlog points = vehicles affected × buffered seconds ÷ report interval.</li><li>Burst writes per second = backlog points ÷ drain time in seconds.</li><li>Storage per day (bytes) = writes per second × 86,400 s × message size in bytes.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Steady: 40,000 ÷ 10 = 4,000 writes per second.</li><li>Affected vehicles: 40,000 × 0.2 = 8,000.</li><li>Backlog: 8,000 × 1,200 s ÷ 10 s = 960,000 points.</li><li>Drain over 60 s: 960,000 ÷ 60 = 16,000 writes per second, on top of 4,000, giving 20,000.</li><li>Storage: 4,000 × 86,400 × 200 B = 69.12 GB per day, before indexes and replication.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Keep 30% headroom on steady ingest: 4,000 ÷ 0.7 ≈ 5,715 writes per second. Rather than provisioning 20,000 writes per second for a rare burst, slow the drain: over 10 minutes the backlog adds only 1,600 writes per second, for 5,600 total, fitting within headroom. Client-side pacing has turned a 5x capacity need into a behavior, which is a driver worth stating.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>With three zones and surviving one zone loss, 5,715 × 3 ÷ 2 ≈ 8,573 writes per second of provisioned capacity. If the burst assumption is wrong and 50% of the fleet reconnects, the backlog is 2,400,000 points and the same 10-minute drain adds 4,000 writes per second, so total is 8,000. That still fits, but barely. Since the design is sensitive to that assumption, schedule a test of it.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-assumption-treated-as-fact">Assumption treated as fact</h3><dl><dt>Trigger</dt><dd>A guess gets written into a brief with no label, then repeated.</dd><dt>Symptoms</dt><dd>Saturation or redesign in an area the team thought it had settled.</dd><dt>Blast radius</dt><dd>Whatever rests on the belief, often the data layer.</dd><dt>Detection</dt><dd>Compare measured ratios and growth with those in the design document on a schedule.</dd><dt>Mitigation</dt><dd>Add capacity or a throttle to buy time.</dd><dt>Recovery</dt><dd>Reopen dependent decisions and plan the migration.</dd><dt>Prevention</dt><dd>Allow no unlabeled numbers in design documents, and record the source of each number.</dd></dl></div>
+<div class="failure"><h3 id="failure-phantom-constraint">Phantom constraint</h3><dl><dt>Trigger</dt><dd>&quot;We can't do that&quot; persists after its reason has gone.</dd><dt>Symptoms</dt><dd>Expensive workarounds, with no one able to say who imposed the rule.</dd><dt>Blast radius</dt><dd>Ongoing cost and lost options across several teams.</dd><dt>Detection</dt><dd>Ask for the owner and reason, and treat &quot;nobody knows&quot; as a finding.</dd><dt>Mitigation</dt><dd>Propose a time-limited exception for one workload.</dd><dt>Recovery</dt><dd>Have the owner lift it and publish the change.</dd><dt>Prevention</dt><dd>Record owner, reason, and review date for each constraint.</dd></dl></div>
+<div class="failure"><h3 id="failure-driver-missed-because-it-was-non-technical">Driver missed because it was non-technical</h3><dl><dt>Trigger</dt><dd>A team-skill, on-call, or budget limit isn't treated as architectural.</dd><dt>Symptoms</dt><dd>The design is correct on paper, but the team can't operate it.</dd><dt>Blast radius</dt><dd>Reliability of the system and retention of the team.</dd><dt>Detection</dt><dd>Ask who is paged at 03:00 and whether they've ever operated this technology.</dd><dt>Mitigation</dt><dd>Use a managed service or fund training before launch.</dd><dt>Recovery</dt><dd>Simplify the architecture toward the team's skills.</dd><dt>Prevention</dt><dd>Include people, budget, and timeline in driver analysis.</dd></dl></div>
+<div class="failure"><h3 id="failure-register-decays-into-a-graveyard">Register decays into a graveyard</h3><dl><dt>Trigger</dt><dd>Nobody reviews it and nothing depends on it.</dd><dt>Symptoms</dt><dd>Many overdue entries, and people stop updating them.</dd><dt>Blast radius</dt><dd>Assumption tracking loses all credibility.</dd><dt>Detection</dt><dd>Track the overdue count and age of oldest entry.</dd><dt>Mitigation</dt><dd>Archive low-impact items and keep the top ten.</dd><dt>Recovery</dt><dd>Run one review meeting, confirm or delete each entry.</dd><dt>Prevention</dt><dd>Gate architecture review or CI on high-impact overdue entries.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Security assumptions cause some of the worst outcomes: &quot;the internal network is trusted&quot;, &quot;only our app calls this endpoint&quot;, &quot;this field holds no personal data&quot;. State each explicitly, and test it: an internal endpoint reachable through a server-side request forgery attack breaks the first two. See Server-side request forgery <span class="muted">(not yet written)</span>.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>List the trust assumptions at each boundary. For the tracking platform: are device identities verifiable, can a stolen device send false positions, and does the map vendor receive vehicle locations? Each answer may become a driver.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>&quot;Devices are authenticated&quot; is an assumption until you know how credentials are issued, rotated, and revoked. If devices keep credentials for ten years, rotation is a driver. Fail-open or fail-closed behavior during an identity outage needs a stated decision.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>&quot;Customers will not share a fleet&quot; is an assumption that may change with resellers. Record it, because adding tenancy later touches every table and every query. See Multi-tenancy architecture models <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Location data can identify individuals. A constraint such as GDPR in the EU affects retention and residency. Registers may also describe known weaknesses, so restrict access to security-relevant entries.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Check what your assumptions imply about an attacker. &quot;Devices report every 10 seconds&quot; isn't enforced by anything unless the server enforces it. One compromised credential could send 10,000 messages per second, so make it an enforced limit.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Monitor the assumptions themselves: read-to-write ratio, peak-to-mean ratio, mean object size, per-tenant share of traffic. Also register health: <code>assumptions_overdue_total{impact}</code> and days since last review.</p>
+<h3 id="logs">Logs</h3>
+<p>The register checker emits one JSON line for each assessment. Keep decision records, and link them to assumption IDs so that a refuted statement leads to affected decisions.</p>
+<h3 id="traces">Traces</h3>
+<p>Traces check assumptions on fan-out and dependency order, such as &quot;each request calls at most 4 services&quot;. Sampled traces will reveal when it no longer holds.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Build an &quot;assumption health&quot; view: each numeric assumption, the original value, the current measurement, and drift. Plot it beside the threshold where the design would have to change.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Send tickets rather than pages. Example: &quot;write ratio has exceeded the design assumption by 50% for 7 days.&quot; High-impact overdue items block the next architecture review.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>All high-impact assumptions are verified within their stated date, checked monthly.</li><li>No active decision rests on a refuted assumption for more than 30 days.</li><li>90% of numeric design assumptions have a live measurement.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>When an alert fires: find the assumption ID, list dependents, check whether the drift is temporary, and notify the owner. If a threshold will be crossed within two quarters, schedule design work now.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>TypeScript provides a register checker for CI, split into a parser and pure <code>assess</code> function. Python provides a sensitivity analysis over a capacity model. Neither has an HTTP layer, because a command that returns an exit code suits their use, and a server would add nothing to the lesson.</p>
+<h3 id="data-structures">Data structures</h3>
+<p><code>Assumption</code> carries owner, impact, status, verify-by date, and dependents. <code>Report</code> holds the action as a union of <code>block</code>, <code>verify-now</code>, <code>watch</code>, and <code>none</code>. In Python, <code>Input</code> validates that low ≤ base ≤ high, and <code>Swing</code> records spread and threshold crossing.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>pnpm start register.json</code> prints JSON lines with exit codes 0, 1, or 2. <code>python -m app.main</code> prints JSON. Python's <code>sensitivity(inputs, threshold)</code> is usable as a library.</p>
+<h3 id="error-handling">Error handling</h3>
+<p>The TypeScript parser rejects missing owners, since an unowned assumption defeats the purpose, and it reports invalid dates. Exit code 2 stands apart from 1, which allows CI to distinguish bad data from a real block. Pydantic rejects unordered ranges at construction time.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>Both tools run once and hold no shared state. Concurrency arises in editing the register itself. Version control handles this, with merge review acting as the change process.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>One-at-a-time analysis ignores correlated inputs. The node model is deliberately simple and leaves out storage, memory, and fan-out. Neither tool can find an assumption that nobody wrote down, which is often the most dangerous kind.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Link IDs to ADRs, feed measurements from metrics into the register, run the check on a schedule as well as in CI, and notify owners automatically. Use Monte Carlo sampling when inputs correlate.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Assumption register. An assumption is a debt with a due date, so this tool reports which
+// assumptions are overdue and how much design rests on each.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+export type Impact = 'low' | 'medium' | 'high';
+export type Status = 'unverified' | 'confirmed' | 'refuted';
+
+export interface Assumption {
+  id: string;
+  statement: string;
+  owner: string;
+  impact: Impact;
+  status: Status;
+  verifyBy: string; // ISO date
+  dependents: string[]; // decision IDs that rest on this assumption
+}
+
+export interface Report {
+  id: string;
+  action: 'block' | 'verify-now' | 'watch' | 'none';
+  reason: string;
+}
+
+export class RegisterError extends Error {}
+
+export function parseRegister(raw: unknown): Assumption[] {
+  if (!Array.isArray(raw)) throw new RegisterError('Register must be a JSON array.');
+  return raw.map((v: unknown, i: number): Assumption =&gt; {
+    const o = v as Partial&lt;Assumption&gt; | null;
+    if (!o || typeof o.id !== 'string' || typeof o.statement !== 'string' || typeof o.owner !== 'string' || o.owner === '') {
+      throw new RegisterError(`Entry ${i} needs id, statement, and a named owner.`);
+    }
+    if (o.impact !== 'low' &amp;&amp; o.impact !== 'medium' &amp;&amp; o.impact !== 'high') throw new RegisterError(`Entry ${o.id} has an invalid impact.`);
+    if (o.status !== 'unverified' &amp;&amp; o.status !== 'confirmed' &amp;&amp; o.status !== 'refuted') throw new RegisterError(`Entry ${o.id} has an invalid status.`);
+    if (typeof o.verifyBy !== 'string' || Number.isNaN(Date.parse(o.verifyBy))) throw new RegisterError(`Entry ${o.id} needs a valid verifyBy date.`);
+    return { id: o.id, statement: o.statement, owner: o.owner, impact: o.impact, status: o.status, verifyBy: o.verifyBy, dependents: Array.isArray(o.dependents) ? o.dependents : [] };
+  });
+}
+
+export function assess(a: Assumption, today: Date): Report {
+  if (a.status === 'confirmed') return { id: a.id, action: 'none', reason: 'Confirmed by evidence.' };
+  if (a.status === 'refuted') {
+    return a.dependents.length &gt; 0
+      ? { id: a.id, action: 'block', reason: `Refuted, and ${a.dependents.length} decision(s) still rest on it: ${a.dependents.join(', ')}.` }
+      : { id: a.id, action: 'none', reason: 'Refuted, with nothing depending on it.' };
+  }
+  const overdue = new Date(a.verifyBy).getTime() &lt; today.getTime();
+  if (overdue &amp;&amp; a.impact === 'high') return { id: a.id, action: 'block', reason: `High impact and overdue since ${a.verifyBy}.` };
+  if (overdue) return { id: a.id, action: 'verify-now', reason: `Overdue since ${a.verifyBy}.` };
+  return { id: a.id, action: 'watch', reason: `Verify by ${a.verifyBy}. Owner: ${a.owner}.` };
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    const path = process.argv[2];
+    if (!path) throw new RegisterError('Usage: pnpm start &lt;register.json&gt;');
+    const reports = parseRegister(JSON.parse(readFileSync(path, 'utf8'))).map((a) =&gt; assess(a, new Date()));
+    for (const r of reports) console.log(JSON.stringify({ level: r.action === 'block' ? 'error' : 'info', msg: 'assumption.assessed', ...r }));
+    process.exitCode = reports.some((r) =&gt; r.action === 'block') ? 1 : 0;
+  } catch (err) {
+    console.error(JSON.stringify({ level: 'error', msg: 'register.invalid', error: err instanceof Error ? err.message : String(err) }));
+    process.exitCode = 2;
+  }
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;One-at-a-time sensitivity analysis: which assumption would change the design most?
+
+An architecture driver is often an assumption whose plausible range crosses a design threshold.
+This varies each input across its range and reports the swing in required capacity, and whether
+that swing crosses a threshold where the design must change.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+import math
+
+from pydantic import BaseModel, Field, model_validator
+
+
+class Input(BaseModel):
+    name: str
+    low: float = Field(gt=0)
+    base: float = Field(gt=0)
+    high: float = Field(gt=0)
+
+    @model_validator(mode=&quot;after&quot;)
+    def ordered(self) -&gt; &quot;Input&quot;:
+        if not self.low &lt;= self.base &lt;= self.high:
+            raise ValueError(f&quot;{self.name}: expected low &lt;= base &lt;= high&quot;)
+        return self
+
+
+class Swing(BaseModel):
+    name: str
+    at_low: int
+    at_high: int
+    spread: int
+    crosses_threshold: bool
+
+
+def nodes_needed(daily_active: float, reqs_per_user: float, peak_ratio: float, rps_per_node: float) -&gt; int:
+    &quot;&quot;&quot;Nodes for peak load: daily requests / 86,400 s, scaled to peak, over per-node capacity.&quot;&quot;&quot;
+    peak_rps = daily_active * reqs_per_user / 86_400 * peak_ratio
+    return math.ceil(peak_rps / rps_per_node)
+
+
+def sensitivity(inputs: list[Input], threshold: int) -&gt; list[Swing]:
+    base = {i.name: i.base for i in inputs}
+    swings: list[Swing] = []
+    for item in inputs:
+        low = nodes_needed(**(base | {item.name: item.low}))
+        high = nodes_needed(**(base | {item.name: item.high}))
+        lo, hi = min(low, high), max(low, high)
+        swings.append(
+            Swing(name=item.name, at_low=low, at_high=high, spread=hi - lo,
+                  crosses_threshold=lo &lt;= threshold &lt; hi)
+        )
+    return sorted(swings, key=lambda s: s.spread, reverse=True)
+
+
+SAMPLE = [
+    Input(name=&quot;daily_active&quot;, low=2e6, base=5e6, high=2e7),
+    Input(name=&quot;reqs_per_user&quot;, low=20, base=30, high=60),
+    Input(name=&quot;peak_ratio&quot;, low=2, base=3, high=6),
+    Input(name=&quot;rps_per_node&quot;, low=500, base=1_000, high=1_500),
+]
+
+
+def main() -&gt; int:
+    # A single primary database is assumed workable up to 16 nodes of load in this scenario.
+    threshold = 16
+    print(json.dumps({
+        &quot;base_nodes&quot;: nodes_needed(**{i.name: i.base for i in SAMPLE}),
+        &quot;threshold_nodes&quot;: threshold,
+        &quot;swings&quot;: [s.model_dump() for s in sensitivity(SAMPLE, threshold)],
+    }, indent=2))
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/constraints-assumptions-and-architecture-drivers/examples/typescript
+pnpm install --ignore-workspace</code></pre>
+<h3 id="run">Run</h3>
+<pre class="code"><code class="language-bash">pnpm --silent start register.json | jq -c &quot;{id, action}&quot;</code></pre>
+<p>Now see which assumption to verify first:</p>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run python -m app.main | jq -c '.swings[] | {name, at_low, at_high, crosses_threshold}'</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>The register produces:</p>
+<pre class="code"><code class="language-json">{&quot;id&quot;:&quot;A1&quot;,&quot;action&quot;:&quot;block&quot;}
+{&quot;id&quot;:&quot;A2&quot;,&quot;action&quot;:&quot;none&quot;}
+{&quot;id&quot;:&quot;A3&quot;,&quot;action&quot;:&quot;block&quot;}
+{&quot;id&quot;:&quot;A4&quot;,&quot;action&quot;:&quot;watch&quot;}</code></pre>
+<p>The sensitivity tool ranks <code>daily_active</code> first, spanning 3 to 21 nodes, and it alone has <code>crosses_threshold</code> true against the 16-node limit.</p>
+<h3 id="cleanup">Cleanup</h3>
+<pre class="code"><code class="language-bash">rm -rf ../typescript/node_modules .venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>A4</code> shows <code>verify-now</code>: its 2030 date has passed, so edit the date in <code>register.json</code>.</li><li><code>ERR_UNKNOWN_FILE_EXTENSION</code>: upgrade Node.js to 23.6 or later.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Sort the kickoff notes</h3><p>Classify each one and name the next action: (a) &quot;We have to use Kafka because the platform team runs it.&quot; (b) &quot;Data for German customers must stay in the EU.&quot; (c) &quot;Peak traffic is about 3x mean.&quot; (d) &quot;The system should be easy to operate.&quot;</p><details class="disclosure"><summary>Hint</summary><p>Ask who could change it, and what evidence would disprove it.</p></details><details class="disclosure"><summary>Solution</summary><p>(a) Soft constraint: ask the platform team what happens if another broker is used, and who carries the operational cost. (b) Hard constraint if confirmed by legal: verify the exact wording, as it may be broader or narrower than stated. (c) Assumption: measure it. (d) An untestable requirement: rewrite it, for example &quot;a new on-call engineer can complete a failover using the runbook in under 15 minutes.&quot;</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Treating all &quot;must&quot; statements as hard. Accepting (c) because it sounds common.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> The design that kept getting more expensive</h3><p>A team's cache keeps growing, and hit rate has dropped from 92% to 61% in a year, although read traffic is flat. Their design says &quot;80% of reads go to 20% of keys&quot;. Use a logged key sample to test that belief. What do you measure, and what do you do if the skew has flattened?</p><details class="disclosure"><summary>Hint</summary><p>Compute the share of reads going to the top 20% of keys. Compare it with the design value and check what changed in the product.</p></details><details class="disclosure"><summary>Solution</summary><p>Count reads by key over a representative window, sort, and compute the cumulative share at 20% of distinct keys. If it is now 45%, for example, the assumption is refuted: likely personalization or a long-tail feature changed the access pattern. Register the refutation, then reopen the cache decision: it may need a larger tier, a different admission policy, or caching at a different layer. Add the skew measurement to the dashboard. See Cache admission and eviction algorithms <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Only resizing the cache. Looking at one hour rather than a whole cycle of traffic.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Find the assumption that matters</h3><p>Users: 1 to 8 million, base 3 million. Each sends 2 to 10 messages per day, base 4. Peak ratio: 2 to 5, base 3. Each node takes 200 messages per second. Which input has the widest swing? Would the limit of 8 nodes be crossed?</p><details class="disclosure"><summary>Hint</summary><p>At base: 3,000,000 × 4 ÷ 86,400 × 3 ÷ 200. Vary one input at a time and round up.</p></details><details class="disclosure"><summary>Solution</summary><p>Base: 138.9 mean per second × 3 = 416.7, ÷ 200 = 2.08, so 3 nodes. Users: 1 million gives 0.69, so 1 node; 8 million gives 5.56, so 6 nodes; spread 5. Messages: 2 gives 1.04, so 2; 10 gives 5.21, so 6; spread 4. Peak: 2 gives 1.39, so 2; 5 gives 3.47, so 4; spread 2. User count has the widest swing, and no single input crosses 8 nodes. But two at once can: 8,000,000 × 10 ÷ 86,400 × 3 ÷ 200 = 13.9, so 14 nodes. So check combined cases too, since one-at-a-time analysis hides them.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Stopping at the single-input result. Forgetting to divide by 86,400.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> Drivers for a video-conference recording feature</h3><p>Recording is being added to a 500,000-user conferencing product, with recordings stored for 90 days. List two hard constraints that you would verify, three assumptions, and three drivers. For each driver, explain the ten-times test.</p><details class="disclosure"><summary>Hint</summary><p>Think about consent law, storage volume, and whether processing happens during or after the meeting.</p></details><details class="disclosure"><summary>Solution</summary><p>Constraints: consent and retention rules in each jurisdiction, confirmed by legal; contractual data residency. Assumptions: 10% of meetings get recorded; average 45 minutes at 2 Mbit/s; 80% of views happen within a week. Drivers: storage volume (10x means tiering and a different cost model), processing latency requirement (ten times faster means real-time pipelines rather than batch), and per-tenant residency (ten times as many regions changes deployment topology). Data: 45 min × 60 × 2 Mbit/s ÷ 8 = 675 MB per recording.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Naming features as drivers. Leaving out legal constraints until the end. Giving drivers that would not change the diagram.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> Refuted during an outage</h3><p>A vendor rate-limits you at 100 requests per second during the year's largest sale, and your design assumed 500. Requests pile up and threads exhaust. What do you do during the incident, and which follow-up actions address the assumption rather than just the symptom?</p><details class="disclosure"><summary>Hint</summary><p>Protect your own system first. Then trace how 500 got into your documents.</p></details><details class="disclosure"><summary>Solution</summary><p>During: declare the incident, cap outbound calls below the actual limit, shed or queue non-critical calls, and degrade the feature. Contact the vendor and request an increase. Afterwards: find where 500 came from (probably a sales conversation or old documentation), get limits in writing, record the assumption with an owner, test limits in a sandbox where allowed, watch <code>429</code> rate and quota use as metrics, and review other vendor assumptions the same way. See Rate limiting <span class="muted">(not yet written)</span> and Backpressure <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Only adding retries, which worsens the overload. Calling this a vendor failure when your design assumed an unverified number.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<p>No formal standard governs this area in general. Useful references: <a href="https://www.iso.org/standard/72089.html" rel="noopener noreferrer">ISO/IEC/IEEE 29148</a>, 2018, covers stakeholder requirements including constraints. <a href="https://docs.arc42.org/section-2/" rel="noopener noreferrer">arc42 section 2</a>, a living open template, gives constraints their own section. It is a widely used convention rather than a standard.</p>
+<h3 id="established-practice">Established practice</h3>
+<p><a href="https://adr.github.io/" rel="noopener noreferrer">Architectural Decision Records</a>, maintained by a community group, connect decisions to their context. Published methods include the <a href="https://en.wikipedia.org/wiki/Architecture_tradeoff_analysis_method" rel="noopener noreferrer">Architecture Tradeoff Analysis Method</a> from the Software Engineering Institute, which names &quot;sensitivity points&quot; and &quot;trade-off points&quot;. The <a href="https://docs.aws.amazon.com/wellarchitected/latest/framework/welcome.html" rel="noopener noreferrer">AWS Well-Architected Framework</a> gives review questions that often expose unstated assumptions.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>No managed service is needed: JSON or Markdown in Git works. Risk-management tools fit regulated organizations. Your metrics platform is the important dependency, as it supplies evidence.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Architecture fitness functions automate checks on some assumptions. See Architecture fitness functions <span class="muted">(not yet written)</span>. Teams are also experimenting with language models to find contradictions in design documents. This is an inference from public activity with no reliable adoption data, and the output is only a prompt for human checking.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>Practice is stable, with no significant recent standards change found in the review for this topic. One shift is that cloud-provider pricing and quotas change often enough that vendor limits need a shorter review date.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Questioning constraints requires organizational trust, and it can read as resistance. Lead with the reason behind the rule. Lightweight registers succeed where something enforces them, and fail where they are only documents.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What is the difference between a constraint and an assumption?</summary><p><strong>Strong answer.</strong> A constraint is a limit I must design within, whereas an assumption is something I believe but haven't verified. The action differs: I challenge constraints with their owner and test assumptions with evidence.</p>
+<p><strong>Why it is asked.</strong> It checks basic design vocabulary and habits.</p>
+<p><strong>Weak-answer warning signs.</strong> Using the terms interchangeably.</p>
+<p><strong>Follow-up.</strong> Give an example of an assumption that was written as a constraint.</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is an architecture driver?</summary><p><strong>Strong answer.</strong> A requirement, constraint, or assumption that would change the structure if it changed. I test by asking if 10 times more or less would mean a different diagram. Usually only a few qualify.</p>
+<p><strong>Why it is asked.</strong> Focus on the right things is what interviewers want to see.</p>
+<p><strong>Weak-answer warning signs.</strong> Listing every requirement, or only naming technologies.</p>
+<p><strong>Follow-up.</strong> Can team size be a driver?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> How do you state assumptions in a design interview?</summary><p><strong>Strong answer.</strong> Aloud and with numbers: &quot;I'll assume 10 million daily users and a 20:1 read ratio. If writes are higher, the storage choice changes.&quot; Naming the sensitivity shows which ones matter.</p>
+<p><strong>Why it is asked.</strong> Interviewers need to follow your reasoning and correct you.</p>
+<p><strong>Weak-answer warning signs.</strong> Hidden assumptions that come out late, or asking the interviewer for every number.</p>
+<p><strong>Follow-up.</strong> The interviewer changes your assumption by ten times. What now?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you challenge a constraint without creating conflict?</summary><p><strong>Strong answer.</strong> I find the reason behind it and meet that reason another way. If a database mandate exists to limit operational load, I offer to carry on-call. I come with priced options and leave the decision to the owner, and I often suggest a time-limited exception.</p>
+<p><strong>Why it is asked.</strong> This is how real designs get unblocked.</p>
+<p><strong>Weak-answer warning signs.</strong> Going around the owner, or accepting every constraint.</p>
+<p><strong>Follow-up.</strong> The owner says no with no reason. What do you do?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Which assumptions do you verify first?</summary><p><strong>Strong answer.</strong> I rank by impact, uncertainty, and cost to check, and use sensitivity analysis to see which range crosses a design threshold. An assumption with a smaller range that crosses a threshold comes before a larger one that doesn't.</p>
+<p><strong>Why it is asked.</strong> Verification effort is limited.</p>
+<p><strong>Weak-answer warning signs.</strong> Verifying what is easy, or trying to verify everything.</p>
+<p><strong>Follow-up.</strong> How do you check an assumption about future traffic?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Give an example of a non-technical architecture driver.</summary><p><strong>Strong answer.</strong> On-call capacity. A six-person team cannot sustainably run a self-managed distributed database, which argues for a managed service even at higher unit cost. Hiring markets and contract dates can matter equally.</p>
+<p><strong>Why it is asked.</strong> It shows you consider operating reality.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating people as outside architecture.</p>
+<p><strong>Follow-up.</strong> How would you quantify the on-call burden?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> What do you do when a design assumption gets refuted after launch?</summary><p><strong>Strong answer.</strong> Find the decisions resting on it, estimate time until a threshold is crossed, buy time if needed through limits or capacity, then plan the change. I also find why it wasn't detected sooner and add a measurement.</p>
+<p><strong>Why it is asked.</strong> It tests calm, structured response.</p>
+<p><strong>Weak-answer warning signs.</strong> Jumping to a rewrite or denying the evidence.</p>
+<p><strong>Follow-up.</strong> How do you explain the extra cost to leadership?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How do you stop assumptions from going stale across many teams?</summary><p><strong>Strong answer.</strong> Keep them close to the code, with owners and dates, and connect high-impact ones to live metrics that alert on drift. Make overdue items block architecture review. Keep the list short, or nobody will maintain it.</p>
+<p><strong>Why it is asked.</strong> It tests designing a mechanism, not a one-time fix.</p>
+<p><strong>Weak-answer warning signs.</strong> Depending on a wiki and good intentions.</p>
+<p><strong>Follow-up.</strong> What metric shows that this process works?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> Two teams hold contradictory assumptions about shared infrastructure. How do you find and fix that?</summary><p><strong>Strong answer.</strong> Read their load forecasts and capacity assumptions side by side, and sum what each expects from the shared system. Then make shared capacity explicit, with quotas and an owner, so that the contradiction turns into a visible allocation decision.</p>
+<p><strong>Why it is asked.</strong> Cross-team failures are common at this level.</p>
+<p><strong>Weak-answer warning signs.</strong> Solving it through one meeting with no lasting mechanism.</p>
+<p><strong>Follow-up.</strong> The total is 150% of capacity. Who decides?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> When would you accept an unverified high-impact assumption?</summary><p><strong>Strong answer.</strong> When verifying costs more than being wrong, or when evidence can come only from real use. In those cases I reduce the blast radius: build the reversible version, launch to a small group, and set a clear signal for revisiting.</p>
+<p><strong>Why it is asked.</strong> Waiting for certainty is also a risky choice.</p>
+<p><strong>Weak-answer warning signs.</strong> Saying never, or accepting them without any mitigation.</p>
+<p><strong>Follow-up.</strong> What would make this decision irreversible, and how would you avoid that?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> How do you distinguish a real regulatory constraint from an over-cautious interpretation?</summary><p><strong>Strong answer.</strong> I read the text with counsel and ask what specifically is required, for what data, and with what penalties. Often the rule covers less than the internal policy does. I bring engineering options and costs so legal can judge the risk, and I document who accepted it. I don't substitute my own legal view.</p>
+<p><strong>Why it is asked.</strong> Principals work directly on these boundaries, and the stakes are high.</p>
+<p><strong>Weak-answer warning signs.</strong> Ignoring legal, or giving legal advice yourself.</p>
+<p><strong>Follow-up.</strong> Legal says &quot;it depends&quot;. How do you proceed with the design?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> A long-standing company rule costs millions each year. How would you change it?</summary><p><strong>Strong answer.</strong> I would find its origin and current owner, quantify its cost and benefit, and identify what risk it still guards against. I would propose a pilot with defined guardrails and exit criteria on a low-risk workload. Then I would publish results so the decision rests with the owner and has evidence behind it.</p>
+<p><strong>Why it is asked.</strong> Changing organizational constraints is core principal work.</p>
+<p><strong>Weak-answer warning signs.</strong> Arguing from principle, or quietly ignoring the rule.</p>
+<p><strong>Follow-up.</strong> The pilot succeeds, but the owner still refuses. What next?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Label each statement: requirement, constraint, or assumption. &quot;Fact&quot; needs evidence.</li><li>Constraints have owners, so ask them why, and price the alternative.</li><li>Assumptions have owners and dates, and impact sets their order.</li><li>Drivers change the diagram. Use the ten-times test.</li><li>Team skills, budgets, and dates can all be legitimate drivers.</li><li>A confirmed assumption becomes unverified again when conditions change.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Has every number got a source or an assumption label?</li><li>Does each constraint list who can lift it?</li><li>Have I run arithmetic to check that statements do not conflict?</li><li>Have I named three to five drivers and tested each?</li><li>Do I know which assumption would most change the design?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Design-critical assumptions have live measurements.</li><li>Drift from assumption values raises a ticket.</li><li>Vendor limits are confirmed in writing and tracked.</li><li>Dependent decisions are linked to assumptions.</li><li>High-impact overdue assumptions block the next review.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Hard constraint:</strong> breaking it causes legal, contractual, or physical failure.</li><li><strong>Soft constraint:</strong> a policy or earlier decision that its owner could change.</li><li><strong>Sensitivity point:</strong> a parameter to which an outcome is highly sensitive.</li><li><strong>Tornado chart:</strong> a bar chart of output swings, ranked by size.</li><li><strong>Ten-times test:</strong> asking whether a tenfold change would alter the structure.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="2"><fieldset><legend>1. A brief says &quot;must use the shared Oracle cluster&quot;. What should you do first?</legend><label><input type="radio" name="quiz-0" value="0"> Design around it, since it says must.</label><label><input type="radio" name="quiz-0" value="1"> Ignore it if another database is better.</label><label><input type="radio" name="quiz-0" value="2"> Find the owner and the reason, then price the alternative.</label><label><input type="radio" name="quiz-0" value="3"> Escalate to the CTO.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Find the owner and the reason, then price the alternative..</p><p>It may be hard or soft. Only the owner and reason can tell you, and an alternative needs a price before anyone can decide.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. Which is the best test for an architecture driver?</legend><label><input type="radio" name="quiz-1" value="0"> Stakeholders listed it first.</label><label><input type="radio" name="quiz-1" value="1"> It is the hardest to implement.</label><label><input type="radio" name="quiz-1" value="2"> A tenfold change in it would change the diagram.</label><label><input type="radio" name="quiz-1" value="3"> It is a quality attribute.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> A tenfold change in it would change the diagram..</p><p>Drivers change structure. They may come from requirements, constraints, or assumptions, and need not be listed first.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>3. 40,000 vehicles report every 10 seconds, and dashboards do 300 reads per second. What is true?</legend><label><input type="radio" name="quiz-2" value="0"> The workload is read-heavy.</label><label><input type="radio" name="quiz-2" value="1"> The workload is write-heavy, at about 4,000 writes per second.</label><label><input type="radio" name="quiz-2" value="2"> The two are balanced.</label><label><input type="radio" name="quiz-2" value="3"> There is not enough information.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> The workload is write-heavy, at about 4,000 writes per second..</p><p>40,000 ÷ 10 = 4,000 writes per second, more than 13 times the reads. Simple arithmetic refutes the belief.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>4. One input has a spread of 3 nodes and crosses a design threshold. Another has a spread of 6 nodes and does not. Which do you verify first?</legend><label><input type="radio" name="quiz-3" value="0"> The one with spread 6.</label><label><input type="radio" name="quiz-3" value="1"> The one that crosses the threshold.</label><label><input type="radio" name="quiz-3" value="2"> Both equally.</label><label><input type="radio" name="quiz-3" value="3"> Neither.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> The one that crosses the threshold..</p><p>Crossing a threshold means the design itself changes. A larger spread that stays within the design matters less.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>5. When should a confirmed assumption return to unverified?</legend><label><input type="radio" name="quiz-4" value="0"> Never.</label><label><input type="radio" name="quiz-4" value="1"> Once per decade.</label><label><input type="radio" name="quiz-4" value="2"> When the conditions behind the evidence change.</label><label><input type="radio" name="quiz-4" value="3"> Only after an incident.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> When the conditions behind the evidence change..</p><p>Evidence is true only for conditions when it was gathered. Product and traffic changes make it a belief again.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Next, continue with <a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a> to measure workloads in place of assuming them. Then read Decision criteria and trade-off matrices <span class="muted">(not yet written)</span> for choosing among options and Architecture decision records <span class="muted">(not yet written)</span> for recording those choices.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/functional-and-non-functional-requirements/index.html">Functional and non-functional requirements</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

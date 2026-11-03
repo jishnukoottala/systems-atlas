@@ -1,0 +1,10 @@
+---
+title: "Failure path: a degraded server hidden by averaged percentiles"
+---
+flowchart TD
+    A["One of ten servers degrades"] --> B["Its p99 reaches 1,227 ms"]
+    B --> C{"How is the fleet p99 computed?"}
+    C -->|"average of per-server p99s"| D["Dashboard: 180 ms, below target"]
+    D --> E["No alert, while users complain"]
+    C -->|"merged histograms"| F["True p99: 649 ms, above target"]
+    F --> G["Alert fires. Per-instance view isolates the server"]

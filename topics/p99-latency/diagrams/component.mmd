@@ -1,0 +1,11 @@
+---
+title: "Component view of the histogram service and percentile analysis"
+---
+flowchart LR
+    R["HTTP GET /work"] --> MW["Express timing middleware"]
+    MW -->|"record duration"| H["Log-linear histogram: Map of bucket to count"]
+    H --> Q["quantile function"]
+    Q -->|"JSON"| MR["GET /metrics/latency"]
+    H2["Another instance's histogram"] -->|"merge: add counts"| H
+    S["Seeded lognormal data"] --> P["Python analysis"]
+    P --> O["Exact vs averaged vs bucketed vs windowed"]

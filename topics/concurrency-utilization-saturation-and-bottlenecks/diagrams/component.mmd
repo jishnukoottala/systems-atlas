@@ -1,0 +1,12 @@
+---
+title: "Component view of the limiter service and the operational analysis"
+---
+flowchart LR
+    R["HTTP GET /query"] --> L["ConcurrencyLimiter.run"]
+    L --> SL["Slots: limit 10"]
+    L --> WQ["Waiters: limit 20"]
+    WQ -->|"queue full"| E["HTTP 503 with Retry-After"]
+    SL --> WK["Simulated database work"]
+    L --> ST["GET /stats: in-flight, utilization, queued, rejected"]
+    IN["Measured demands and server counts"] --> OA["Python: analyze"]
+    OA --> RP["Utilization per resource, bottleneck, X max, knee"]

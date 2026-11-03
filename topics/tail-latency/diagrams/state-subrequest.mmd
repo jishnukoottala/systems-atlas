@@ -1,0 +1,15 @@
+---
+title: "State of one sub-request with hedging"
+---
+stateDiagram-v2
+    [*] --> Pending: first copy sent
+    Pending --> Answered: reply received
+    Pending --> Hedged: timer fires and budget available
+    Pending --> WaitingNoBudget: timer fires and budget empty
+    Hedged --> Answered: first reply wins, loser cancelled
+    Pending --> Missing: deadline passes
+    Hedged --> Missing: deadline passes
+    WaitingNoBudget --> Answered: reply received
+    WaitingNoBudget --> Missing: deadline passes
+    Answered --> [*]
+    Missing --> [*]

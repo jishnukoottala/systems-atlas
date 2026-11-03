@@ -1,0 +1,12 @@
+---
+title: "Failure path: a requirement that was never stated"
+---
+flowchart TD
+    A["Durability never stated"] --> B["Team assumes async replication is acceptable"]
+    B --> C{"Region fails with 8 s replication lag"}
+    C -->|"failover promotes replica"| D["Last 8 s of orders lost"]
+    D --> E["Customers report missing orders"]
+    E --> F["Manual reconciliation against payment provider"]
+    F --> G["RPO is finally stated. Architecture must change"]
+    C -->|"lag near zero by luck"| H["No visible loss, so the gap stays hidden"]
+    H --> C

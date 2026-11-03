@@ -1,0 +1,12 @@
+---
+title: "Failure path: fixed timeouts and retries overrun the budget"
+---
+flowchart TD
+    A["Static 1 s timeout at every hop"] --> B["Payment stalls"]
+    B --> C["Cart waits 1 s, then retries twice"]
+    C --> D["3 s of work for a 300 ms target"]
+    D --> E["Client already gave up"]
+    E --> F["Connection pool fills with dead work"]
+    F --> G["Unrelated requests fail"]
+    B -.->|"with propagated deadline"| H["Stops at remaining budget"]
+    H -.-> I["Fails fast and frees the connection"]

@@ -1,0 +1,13 @@
+---
+title: "States of a resource as load increases"
+---
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> PartlyBusy: arrivals below capacity
+    PartlyBusy --> NearSaturation: utilization above about 80 percent
+    NearSaturation --> PartlyBusy: load falls
+    NearSaturation --> Saturated: arrivals exceed capacity
+    Saturated --> Rejecting: bounded queue is full
+    Saturated --> TimingOut: unbounded queue grows
+    Rejecting --> NearSaturation: load falls
+    TimingOut --> NearSaturation: load removed and queue drained

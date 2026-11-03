@@ -1,0 +1,13 @@
+---
+title: "Component view of the phase timer and calculator"
+---
+flowchart LR
+    C["curl or browser"] -->|"HTTP GET /feed"| R["Express route"]
+    R --> T["PhaseTimer.measure"]
+    T --> A["auth phase"]
+    T --> D["db phase"]
+    T --> P["ranking and ads: sequential or parallel"]
+    T -->|"Server-Timing header"| C
+    T -->|"JSON log line"| L["Structured log"]
+    I["Distance, bandwidth, size"] --> Q["Python calculator"]
+    Q --> O["Propagation, transmission, queueing, handshake report"]

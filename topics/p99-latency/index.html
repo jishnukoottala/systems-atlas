@@ -1,0 +1,506 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>P99 latency | Systems Atlas</title>
+<meta name="description" content="The p99 latency is the value that 99% of requests finish within, for a stated population and time window. Put differently, 1 request in 100 is slower than it. I">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="O092">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>P99 latency</h1>
+<p class="meta-line">O092 · Intermediate · about 1.5 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>The p99 latency is the value that 99% of requests finish within, for a stated population and time window. Put differently, 1 request in 100 is slower than it. It describes one point on the latency distribution and says nothing about how much slower the remaining 1% are.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Averages describe a request almost nobody receives. A service where 98% of requests take 5 ms and 2% take 2 seconds has a mean near 45 ms, which matches no real experience. The p99 exposes the slow group. It also matters more than &quot;1 in 100&quot; suggests, since a user session or a fanned-out page makes many requests: with 100 requests, the chance that at least one exceeds p99 is 1 − 0.99^100 = 63%. A p99 is also easy to compute wrongly. Averaging across servers, using coarse histogram buckets, sampling too little, and choosing a long window can each give you a number that looks exact and is badly wrong.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/latency/index.html">Latency</a></p><h3 id="study-time">Study time</h3><p>About 1.5 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p><a href="../../topics/tail-latency/index.html">Tail latency</a>, Metric cardinality and histogram design <span class="muted">(not yet written)</span>, Benchmark design and coordinated omission <span class="muted">(not yet written)</span>, <a href="../../topics/latency/index.html">Latency</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Compute a percentile correctly and state its population and window.</li><li>Explain why percentiles cannot be averaged, while histograms can be merged.</li><li>Estimate how many samples a stable p99 requires.</li><li>Choose histogram buckets so that a reported p99 is trustworthy near your target.</li><li>Decide when p99 is the right objective and when another measure is better.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>An API has 10 servers. The dashboard shows &quot;p99: 180 ms&quot;, computed as the average of each server's p99, and the target is 300 ms, so everything looks fine. Support is nevertheless receiving complaints. One server has a failing disk, with a p99 of about 1,200 ms, while the other nine are near 65 ms. The true p99 for all requests, computed from combined data, is 649 ms: over twice the target and over three times what the dashboard said. These figures come from the Python example in this lesson.</p>
+<p>The same team has a second problem. Their histogram's buckets jump from 100 ms to 1,000 ms, and interpolation inside such a wide bucket produces smooth, believable numbers that bear little relation to the data. After they switch to merged histograms with buckets concentrated around 300 ms, the bad server is obvious within a minute, and the alert fires as it should. Nothing about the system changed, only how it was measured.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Line up 100 runners by finish time. The p50 is the time of runner 50, and the p99 is the time of runner 99. The average depends on everyone, but the p99 only asks where a given position falls. If you have the finish lists of ten separate races, you can't find the overall runner-99 time by averaging each race's runner-99 time. You have to merge the lists, because one race might be much slower than the rest.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Runners all start together and finish once, whereas requests overlap and interfere with each other, so a slow one can cause others to be slow. Also, nobody stores the complete finish list in production. Systems store a compressed summary, so the answer is an approximation whose error depends on the summary. Finally, a slow request that never finishes because it timed out may vanish from the list altogether, which makes the numbers look better.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> samples, histograms, servers, time windows, percentile queries.</li><li><strong>State:</strong> a count for each bucket, per instance and interval.</li><li><strong>Flow:</strong> record a duration, increment a bucket, export the counts, merge across instances and time, then query.</li><li><strong>Invariant 1:</strong> a percentile has a stated population, window, and measurement point.</li><li><strong>Invariant 2:</strong> aggregate raw counts first and derive percentiles afterward, never the reverse.</li><li><strong>Invariant 3:</strong> failed and timed-out requests are counted, or their exclusion is stated.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead><tbody><tr><td>Percentile (pN)</td><td>Value that N% of samples are at or below</td></tr><tr><td>Nearest rank</td><td>The sample at sorted position ⌈q × n⌉</td></tr><tr><td>Histogram</td><td>Counts in value ranges, or buckets</td></tr><tr><td>Bucket boundary error</td><td>Uncertainty from not knowing where in a bucket a value lies</td></tr><tr><td>Sketch</td><td>A compact summary such as t-digest or DDSketch, with bounded error</td></tr><tr><td>Mergeable</td><td>Two summaries can combine into one for the union of their data</td></tr><tr><td>Quantile</td><td>The same idea as percentile, on a scale of 0 to 1</td></tr></tbody></table></div>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>A percentile is a statement about rank, and rank depends on all the data together. If server A has a p99 of 65 ms and server B has 1,200 ms, the combined p99 could be anywhere from the lower to the higher value, depending on request counts and shapes. No formula recovers it from the two numbers, because the information has gone. Histograms keep the needed information: the counts add, so you can merge them across servers and over time, then compute the percentile.</p>
+<p>Estimating a tail from a sample needs many samples. With n samples, only about n ÷ 100 of them lie beyond p99, and those few determine the estimate. With 100 samples, a single outlier determines the result. Also, what you see is a summary of a time window: a percentile over one hour can miss a five-minute failure that hits less than 1% of that hour's requests. In this lesson's example, an incident with a median of 2,012 ms leaves the hourly p99 at 41.7 ms, since it covers just 0.28% of requests.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p><strong>Nearest rank:</strong> p = sorted[⌈q × n⌉ − 1], using zero-based indexing.</p>
+<p><strong>Requests exceeding p99 at least once</strong>, across k independent requests: 1 − 0.99^k. For k = 10: 9.6%. For k = 100: 63.4%. For k = 500: 99.3%.</p>
+<p><strong>Rank uncertainty:</strong> the number of samples below the true p99 is binomial, with a standard deviation of √(n × q × (1 − q)). For n = 10,000: √99 ≈ 10 ranks, so a roughly 95% interval spans ranks 9,880 to 9,920. Translate those ranks into milliseconds using the local shape of the distribution.</p>
+<p><strong>Measured stability</strong>, from the example with a true p99 near 64 ms, showing the middle 90% of repeated estimates:</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Samples</th><th scope="col">Low estimate</th><th scope="col">High estimate</th></tr></thead><tbody><tr><td>100</td><td>45.2 ms</td><td>77.2 ms</td></tr><tr><td>1,000</td><td>57.2 ms</td><td>70.2 ms</td></tr><tr><td>10,000</td><td>62.1 ms</td><td>65.9 ms</td></tr></tbody></table></div>
+<p><strong>Relative error of log-linear buckets:</strong> with s sub-buckets per power of two, width ÷ value ≤ 1 ÷ s. For s = 16, that is 6.25%.</p>
+<h3 id="complexity">Complexity</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Method</th><th scope="col">Record</th><th scope="col">Query</th><th scope="col">Memory</th><th scope="col">Mergeable</th></tr></thead><tbody><tr><td>Store and sort</td><td>O(1)</td><td>O(n log n)</td><td>O(n)</td><td>Yes, but impractical</td></tr><tr><td>Fixed histogram</td><td>O(log b) or O(b)</td><td>O(b)</td><td>O(b)</td><td>Yes</td></tr><tr><td>Log-linear histogram</td><td>O(1)</td><td>O(b log b) in this example</td><td>O(b)</td><td>Yes, with the same layout</td></tr><tr><td>Moving average</td><td>O(1)</td><td>O(1)</td><td>O(1)</td><td>Not usefully</td></tr></tbody></table></div>
+<p>Here n is the sample count and b the bucket count. A wide value range needs few log-linear buckets: the test shows under 350 for values spanning 1 to 1,000,000.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>Measure duration at a defined point, such as the load balancer or a server middleware.</li><li>Find the bucket and increment its counter, including for failed requests.</li><li>Export cumulative counts per instance at a regular interval.</li><li>At query time, sum per-bucket counts across instances for the chosen window.</li><li>Find the bucket containing rank q × total, then report its bound or interpolate inside it.</li><li>Compare with the objective, and alert using burn rates rather than one noisy point. See Multi-window burn-rate alerts <span class="muted">(not yet written)</span>.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-sample"><figcaption>Path of one latency sample to a reported percentile</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A sample is measured, placed in a bucket, exported with the instance's counts, merged with other instances, and queried as a percentile. Requests that are killed before completing may never be measured. The diagram highlights this as a lost sample.">stateDiagram-v2
+    [*] --&gt; Measured: request finishes
+    [*] --&gt; Lost: process killed or client disconnected unrecorded
+    Measured --&gt; Bucketed: counter incremented
+    Bucketed --&gt; Exported: scrape or push
+    Exported --&gt; Merged: counts summed by bucket
+    Merged --&gt; Reported: quantile computed at query time
+    Bucketed --&gt; Lost: instance dies before export
+    Reported --&gt; [*]
+    Lost --&gt; [*]</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A sample is measured, placed in a bucket, exported with the instance's counts, merged with other instances, and queried as a percentile. Requests that are killed before completing may never be measured. The diagram highlights this as a lost sample.</p></figure>
+<p>The <code>Lost</code> state biases results in the flattering direction. Instances that crash are usually the slow ones, and their unexported counts disappear. Load-balancer measurement partly fixes this, as it records outcomes even when a backend dies.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Several threads record at once, so counters need atomic increments or per-thread shards that merge on read. Reading while writers run gives a slightly inconsistent snapshot, which is acceptable for monitoring. Node's single-threaded event loop avoids this issue in the example. Under high load, the recording path must stay cheap: a lock in the metrics library can itself add latency. See Thread safety <span class="muted">(not yet written)</span>.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Instances scrape at slightly different times, so a merged window is approximate, and for rates this is usually harmless. Counter resets on restarts must be handled when computing increases. Be careful with percentiles of percentiles: a dashboard taking the average or maximum of minute-level p99s over an hour is not the hour's p99. Roll-ups must keep the histogram, or the result is meaningless.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>The service team owns instrumentation and bucket layout, since they know the target. The platform team owns the metrics store and its cardinality limits. SLO owners agree on the measurement point and the definition of the population, including whether errors and health checks count. See SLAs, SLOs, and SLIs <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: where latency is measured and aggregated</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Users reach a load balancer that records latency for requests, including backend failures, then application servers each keep their own histogram. A metrics store merges histograms and feeds dashboards and alerts. Real-user monitoring reports separately. Trust boundary separates client devices from the operator network.">flowchart LR
+    subgraph client[&quot;Client devices: outside operator control&quot;]
+      U[&quot;Browser or app: real-user timing&quot;]
+    end
+    subgraph op[&quot;Operator network&quot;]
+      LB[&quot;Load balancer: sees all outcomes&quot;]
+      A1[&quot;Server 1: owns its histogram&quot;]
+      A2[&quot;Server N: owns its histogram&quot;]
+      M[&quot;Metrics store: merges counts by bucket&quot;]
+      D[&quot;Dashboards and SLO alerts&quot;]
+    end
+    U --&gt;|&quot;HTTPS&quot;| LB
+    LB --&gt; A1
+    LB --&gt; A2
+    A1 --&gt;|&quot;scrape: bucket counts&quot;| M
+    A2 --&gt;|&quot;scrape: bucket counts&quot;| M
+    LB --&gt;|&quot;export: bucket counts&quot;| M
+    U --&gt;|&quot;beacon: sampled timings&quot;| M
+    M --&gt; D</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Users reach a load balancer that records latency for requests, including backend failures, then application servers each keep their own histogram. A metrics store merges histograms and feeds dashboards and alerts. Real-user monitoring reports separately. Trust boundary separates client devices from the operator network.</p></figure>
+<p>Each measurement point answers a different question. Servers can break latency down by route but miss what happens before their handler runs. The load balancer sees failures and upstream queues. Real-user data includes the last mile, though it needs privacy review. The arrows carry bucket counts, not percentiles, as only counts can be merged.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the histogram service and percentile analysis</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Express middleware records durations into a log-linear histogram, and an inspection route computes quantiles from it. A merge operation combines histograms. Separately, the Python analysis generates seeded data and compares averaged, bucketed, and windowed percentiles with the exact value.">flowchart LR
+    R[&quot;HTTP GET /work&quot;] --&gt; MW[&quot;Express timing middleware&quot;]
+    MW --&gt;|&quot;record duration&quot;| H[&quot;Log-linear histogram: Map of bucket to count&quot;]
+    H --&gt; Q[&quot;quantile function&quot;]
+    Q --&gt;|&quot;JSON&quot;| MR[&quot;GET /metrics/latency&quot;]
+    H2[&quot;Another instance's histogram&quot;] --&gt;|&quot;merge: add counts&quot;| H
+    S[&quot;Seeded lognormal data&quot;] --&gt; P[&quot;Python analysis&quot;]
+    P --&gt; O[&quot;Exact vs averaged vs bucketed vs windowed&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Express middleware records durations into a log-linear histogram, and an inspection route computes quantiles from it. A merge operation combines histograms. Separately, the Python analysis generates seeded data and compares averaged, bucketed, and windowed percentiles with the exact value.</p></figure>
+<p>The merge arrow is the most important one here. Because a histogram merges by adding counts, its percentile matches what a single histogram of all requests would report, and the tests confirm it.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: computing a fleet p99 correctly</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. A dashboard asks the metrics store for a fleet p99. The store fetches bucket counts from each instance's data, sums them, finds the bucket that holds the 99th percentile rank, and returns a value with its bucket bounds.">sequenceDiagram
+    participant D as Dashboard
+    participant M as Metrics store
+    participant S1 as Series, server 1
+    participant S2 as Series, server 2
+    D-&gt;&gt;M: p99 for route over 5 minutes
+    M-&gt;&gt;S1: Bucket count increases
+    S1--&gt;&gt;M: le10=900, le100=95, le1000=5
+    M-&gt;&gt;S2: Bucket count increases
+    S2--&gt;&gt;M: le10=100, le100=300, le1000=600
+    M-&gt;&gt;M: Sum: le10=1000, le100=395, le1000=605
+    M-&gt;&gt;M: Rank 0.99 x 2000 = 1980 falls in le1000
+    M--&gt;&gt;D: Between 100 and 1000 ms</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. A dashboard asks the metrics store for a fleet p99. The store fetches bucket counts from each instance's data, sums them, finds the bucket that holds the 99th percentile rank, and returns a value with its bucket bounds.</p></figure>
+<p>Server 1 alone would report a p99 inside its last bucket, and server 2 is much worse. Summing counts weights each server by its traffic. Note the answer's honest form: &quot;between 100 and 1,000 ms&quot;. A precise-looking interpolated number from such a bucket would be false precision.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: a degraded server hidden by averaged percentiles</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. One server degrades and its p99 reaches 1,227 ms. The dashboard averages per-server p99s and shows 180 ms, under target, so no alert fires and users complain. Merged histograms reveal a true p99 of 649 ms and the alert fires.">flowchart TD
+    A[&quot;One of ten servers degrades&quot;] --&gt; B[&quot;Its p99 reaches 1,227 ms&quot;]
+    B --&gt; C{&quot;How is the fleet p99 computed?&quot;}
+    C --&gt;|&quot;average of per-server p99s&quot;| D[&quot;Dashboard: 180 ms, below target&quot;]
+    D --&gt; E[&quot;No alert, while users complain&quot;]
+    C --&gt;|&quot;merged histograms&quot;| F[&quot;True p99: 649 ms, above target&quot;]
+    F --&gt; G[&quot;Alert fires. Per-instance view isolates the server&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. One server degrades and its p99 reaches 1,227 ms. The dashboard averages per-server p99s and shows 180 ms, under target, so no alert fires and users complain. Merged histograms reveal a true p99 of 649 ms and the alert fires.</p></figure>
+<p>The same telemetry leads to opposite outcomes, depending on one aggregation decision. This failure is silent, which is what makes it serious: a broken measurement looks exactly like a healthy system. The numbers are from this lesson's seeded example.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>Describes what the slow users actually experience, unlike a mean.</li><li>Robust to a few extreme outliers, compared with a maximum.</li><li>Widely understood, and works well as an SLO target.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Histograms take more metric series than a single average.</li><li>Needs adequate traffic to be stable, so it is noisy on low-volume routes.</li><li>Ignores everything past the 99th position: the worst 1% could be 500 ms or 30 s.</li><li>Optimizing one percentile can move problems just beyond it.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>Threshold SLI:</strong> &quot;99% of requests under 300 ms&quot; counts good requests. It's simple, it aggregates correctly, and only needs one bucket boundary at the target.</li><li><strong>p99.9 or maximum:</strong> for high-volume systems or pause detection. See <a href="../../topics/tail-latency/index.html">Tail latency</a>.</li><li><strong>Latency heat map:</strong> shows multiple modes, which percentiles conceal.</li><li><strong>Sketches:</strong> t-digest or DDSketch give accuracy across a wide range, at some implementation cost.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>For user-facing and internal services with enough volume. As a rule of thumb, you want at least 1,000 samples in the evaluation window, more if the decision is important.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Avoid p99 on routes with few requests, where a threshold ratio over a longer window is better. For batch jobs, track completion time per job. For bimodal traffic, split by route or cache status before computing percentiles, as a single number will describe neither group.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>The p99 and p50 move in different directions, indicating a mix change.</li><li>Your target moves, so bucket boundaries must follow it.</li><li>Fan-out increases, so a higher percentile now determines what users experience.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<p>The capacity concern here is the telemetry cost of the percentile data itself.</p>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>200 routes, 5 status classes, 12 histogram buckets, and 300 instances, scraped every 15 s. Assumed storage of about 2 bytes per sample after compression. This depends on your system, so measure it.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Series = routes × status classes × buckets × instances.</li><li>Samples per second = series ÷ scrape interval in seconds.</li><li>Storage per day (bytes) = samples per second × 86,400 s × bytes per sample.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Per instance: 200 × 5 × 12 = 12,000 series.</li><li>Fleet: 12,000 × 300 = 3,600,000 series.</li><li>Samples: 3,600,000 ÷ 15 = 240,000 per second.</li><li>Storage: 240,000 × 86,400 × 2 B ≈ 41.5 GB per day.</li><li>After aggregating away the instance label for long-term storage: 12,000 series, 800 samples per second, and about 138 MB per day.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Allow 30% for growth in routes and instances, or about 54 GB per day of raw data. Keep per-instance data for a short period, such as 7 days, for debugging, and fleet aggregates for longer. Retention figures are illustrative.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>During a zone loss or an autoscaling event, instance churn creates new series, because each new instance has a new label value. Replacing all 300 instances doubles active series temporarily, to 7.2 million. Size the metrics store for this, as monitoring needs to work best during failures. Also, metrics should not depend on the failing zone. See Metric cardinality and histogram design <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-percentiles-averaged-across-instances">Percentiles averaged across instances</h3><dl><dt>Trigger</dt><dd>A dashboard applies an average or maximum to per-instance p99 values.</dd><dt>Symptoms</dt><dd>The reported p99 does not match user reports or load-balancer data.</dd><dt>Blast radius</dt><dd>Every decision relying on that dashboard, including SLO reports.</dd><dt>Detection</dt><dd>Compare it with a p99 computed from merged histograms.</dd><dt>Mitigation</dt><dd>Replace the query with a histogram aggregation.</dd><dt>Recovery</dt><dd>Restate past SLO numbers if they were reported to customers.</dd><dt>Prevention</dt><dd>Export histograms only, and code-review dashboard queries.</dd></dl></div>
+<div class="failure"><h3 id="failure-buckets-do-not-fit-the-target">Buckets do not fit the target</h3><dl><dt>Trigger</dt><dd>Default or very wide buckets surround the objective.</dd><dt>Symptoms</dt><dd>The p99 sits at or between fixed values, and small changes are invisible.</dd><dt>Blast radius</dt><dd>Alerts fire late or never for the affected route.</dd><dt>Detection</dt><dd>Compare with exact values from a trace or log sample.</dd><dt>Mitigation</dt><dd>Add a bucket boundary at the target immediately.</dd><dt>Recovery</dt><dd>Re-baseline, as historical comparisons across layouts are unsafe.</dd><dt>Prevention</dt><dd>Choose buckets by target or use exponential histograms.</dd></dl></div>
+<div class="failure"><h3 id="failure-timeouts-and-errors-excluded">Timeouts and errors excluded</h3><dl><dt>Trigger</dt><dd>Only successful requests are recorded, or timeouts have no duration recorded.</dd><dt>Symptoms</dt><dd>Latency improves during outages, since the slow requests have vanished.</dd><dt>Blast radius</dt><dd>Incident detection and SLO accuracy.</dd><dt>Detection</dt><dd>Check latency alongside error rate, and compare client and server counts.</dd><dt>Mitigation</dt><dd>Record failures, with their durations, using a status label.</dd><dt>Recovery</dt><dd>Fix instrumentation and restate reports.</dd><dt>Prevention</dt><dd>Measure at a layer that sees every outcome, and test it during fault injection.</dd></dl></div>
+<div class="failure"><h3 id="failure-too-few-samples">Too few samples</h3><dl><dt>Trigger</dt><dd>An alert uses p99 on a low-volume route over a short window.</dd><dt>Symptoms</dt><dd>Noisy, flapping alerts driven by one or two requests.</dd><dt>Blast radius</dt><dd>On-call attention and trust in alerts.</dd><dt>Detection</dt><dd>Show request count beside p99, and flag windows with fewer than 1,000 samples.</dd><dt>Mitigation</dt><dd>Lengthen the window or aggregate similar routes.</dd><dt>Recovery</dt><dd>Replace the alert with a good-request ratio.</dd><dt>Prevention</dt><dd>Include a minimum sample count in alert rules.</dd></dl></div>
+<div class="failure"><h3 id="failure-coordinated-omission-in-measurement">Coordinated omission in measurement</h3><dl><dt>Trigger</dt><dd>A closed-loop test or client waits for each response, so stalls suppress new samples.</dd><dt>Symptoms</dt><dd>A long pause shows up as one slow sample, and p99 looks excellent.</dd><dt>Blast radius</dt><dd>False confidence before launch.</dd><dt>Detection</dt><dd>Compare with an open-loop generator with fixed arrival times.</dd><dt>Mitigation</dt><dd>Measure from intended send time.</dd><dt>Recovery</dt><dd>Rerun tests using a corrected tool.</dd><dt>Prevention</dt><dd>Use open-loop load generation. See Benchmark design and coordinated omission <span class="muted">(not yet written)</span>.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Metric labels can leak or explode. If a label takes values from user input, an attacker can create unlimited series and take down your metrics store, thus blinding your monitoring during an attack. Inspection endpoints like <code>/metrics/latency</code> reveal traffic volumes and internal route names.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Keep metrics endpoints on an internal network or behind authentication, and do not serve them through the public load balancer. Treat real-user beacons as untrusted input, since anyone can send false timings and distort your numbers.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Scrape targets should authenticate the scraper when they carry anything sensitive. Restrict who can read per-tenant latency, and who can edit dashboards and alert rules. A silently edited query can hide an outage.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>A global p99 can hide a single tenant's bad experience. Measure latency per tenant class, and for your largest tenants individually. Avoid one label value per tenant when you have many: use a bounded set, or keep per-tenant data in logs instead.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Never put user IDs, emails, or raw URLs in metric labels, where they can't be easily deleted. Use route templates. Real-user monitoring may collect personal data, depending on jurisdiction, and needs review. See Privacy-by-design <span class="muted">(not yet written)</span>.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Normalize route labels server-side, and map unknown paths to one label so that scanners can't create new series. Set per-target series limits in the metrics system. Filter or tag known bot traffic, so attackers can't distort the percentile that drives your alerts.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Use a latency histogram with labels for route template, method, and status class. Add request count beside it. Add metrics about the metrics pipeline: scrape failures, series count, and dropped samples.</p>
+<h3 id="logs">Logs</h3>
+<p>Log individual slow requests above a threshold with route, duration, and trace ID, so that a bad percentile can be traced to examples. Sample the logs to bound their volume.</p>
+<h3 id="traces">Traces</h3>
+<p>Sample slow requests preferentially, as head sampling at 1% keeps few from the tail. Exemplars link a histogram bucket to a trace ID, moving you from &quot;p99 is high&quot; straight to an actual slow request. See Trace sampling and context propagation <span class="muted">(not yet written)</span>.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Show p50, p90, p99, and p99.9 on one graph, plus count. Add a heat map to reveal multiple modes, and a per-instance view to spot single bad servers. Display the target as a line.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Alert on the ratio of requests slower than the target, using multi-window burn rates, instead of on an instantaneous p99. A ratio is cheap to compute, aggregates correctly, and handles low traffic better.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>99% of <code>GET /search</code> requests complete within 300 ms at the load balancer, over 28 days.</li><li>99.9% of <code>POST /orders</code> finish within 1 s over 28 days, including failures at their full duration.</li><li>A ratio form is preferred: count of requests at or below 300 ms, divided by all requests.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>When p99 rises: check whether p50 rose too (a general slowdown) or only the tail (a subset). Split by instance, route, and status. If it is one instance, drain it. If it is one route, inspect slow traces. Check request count first, since low volume can make a number meaningless.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>The TypeScript example is an Express service with a timing middleware and a log-linear <code>Histogram</code> class, using an inspection route. The Python example is a seeded analysis comparing exact percentiles with the common wrong methods. The TypeScript side shows how to measure correctly, and the Python side shows how measurement goes wrong.</p>
+<h3 id="data-structures">Data structures</h3>
+<p><code>Histogram</code> maps a bucket index to a count. The index combines a value's power of two with one of 16 linear sub-buckets, bounding relative error at 6.25%. A <code>Map</code> keeps only non-empty buckets, so memory depends on the range seen and not on the number of samples.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>record(ms)</code>, <code>merge(other)</code>, and <code>quantile(q)</code>, plus <code>GET /work</code>, <code>GET /healthz</code>, and <code>GET /metrics/latency</code>. In Python: <code>percentile</code>, <code>average_of_p99s</code>, <code>p99_spread</code>, <code>bucket_p99</code>, and <code>window_effect</code>.</p>
+<h3 id="error-handling">Error handling</h3>
+<p><code>record</code> rejects negative and non-finite values, since a bad clock must not silently corrupt a histogram. <code>merge</code> rejects mismatched layouts. <code>quantile</code> throws on an empty histogram, because a reported 0 ms would look like excellent performance. The route handles the empty case by reporting just a count of zero.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>Node runs <code>record</code> on one thread, so no synchronization is needed. In a multi-threaded runtime you would use striped atomic counters. The middleware records on <code>finish</code>, which misses clients that disconnect early. A production version would also listen for <code>close</code>.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>There are no time windows: the histogram accumulates forever. It reports bucket upper bounds and does no interpolation. <code>curl</code> in a loop is closed-loop, so it understates queueing. Lognormal data is a simplification.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Use a maintained library such as an OpenTelemetry exponential histogram or HdrHistogram, add rotating windows, export to your metrics system, capture aborted requests, and attach exemplars.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Express service recording request latency in a histogram and exposing percentiles for inspection.
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
+import { Histogram } from './histogram.ts';
+
+const log = (level: string, msg: string, fields: Record&lt;string, unknown&gt; = {}): void =&gt; {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level, msg, ...fields }));
+};
+const sleep = (ms: number): Promise&lt;void&gt; =&gt; new Promise((resolve) =&gt; { setTimeout(resolve, ms); });
+
+// 2% of requests are slow, so the median stays low and p99 reveals them.
+export const pickDelay = (r: number): number =&gt; (r &lt; 0.02 ? 200 : 5);
+
+export function createApp(random: () =&gt; number = Math.random): Express {
+  const app = express();
+  const latency = new Histogram();
+
+  app.use((req: Request, res: Response, next: NextFunction) =&gt; {
+    const start = performance.now();
+    res.on('finish', () =&gt; { if (req.path === '/work') latency.record(performance.now() - start); });
+    next();
+  });
+  app.get('/healthz', (_req: Request, res: Response) =&gt; { res.json({ status: 'ok' }); });
+  app.get('/work', async (_req: Request, res: Response) =&gt; {
+    await sleep(pickDelay(random()));
+    res.json({ done: true });
+  });
+  app.get('/metrics/latency', (_req: Request, res: Response) =&gt; {
+    if (latency.count === 0) { res.json({ count: 0 }); return; }
+    const pct = (q: number): number =&gt; Math.round(latency.quantile(q) * 10) / 10;
+    res.json({ count: latency.count, p50: pct(0.5), p90: pct(0.9), p99: pct(0.99), p999: pct(0.999), buckets: latency.bucketCount });
+  });
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) =&gt; {
+    log('error', 'request.failed', { error: String(err) });
+    res.status(500).json({ error: 'Internal error.' });
+  });
+  return app;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const port = Number(process.env['PORT'] ?? 3000);
+  const server = createApp().listen(port, () =&gt; { log('info', 'server.started', { port }); });
+  const stop = (): void =&gt; { server.close(() =&gt; { process.exit(0); }); };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Show the common ways percentile numbers go wrong, using seeded data.
+
+1. Averaging per-server p99s does not give the fleet p99.
+2. Few samples give an unstable p99.
+3. Coarse histogram buckets decide the answer you see.
+4. Percentiles over a window hide short bad periods.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+import math
+import random
+from bisect import bisect_left
+from statistics import mean
+
+from pydantic import BaseModel, Field
+
+
+class ServerProfile(BaseModel):
+    name: str
+    median_ms: float = Field(gt=0)
+    sigma: float = Field(gt=0)
+    requests: int = Field(gt=0)
+
+
+def percentile(values: list[float], q: float) -&gt; float:
+    &quot;&quot;&quot;Nearest-rank percentile. Sorts a copy, so it is O(n log n).&quot;&quot;&quot;
+    if not values:
+        raise ValueError(&quot;no values&quot;)
+    if not 0 &lt; q &lt;= 1:
+        raise ValueError(&quot;q must be in (0, 1]&quot;)
+    ordered = sorted(values)
+    return ordered[math.ceil(q * len(ordered)) - 1]
+
+
+def sample(rng: random.Random, p: ServerProfile) -&gt; list[float]:
+    return [rng.lognormvariate(math.log(p.median_ms), p.sigma) for _ in range(p.requests)]
+
+
+def average_of_p99s(seed: int = 3) -&gt; dict[str, float]:
+    rng = random.Random(seed)
+    fleet = [
+        ServerProfile(name=f&quot;healthy-{i}&quot;, median_ms=20, sigma=0.5, requests=50_000) for i in range(9)
+    ] + [ServerProfile(name=&quot;degraded&quot;, median_ms=300, sigma=0.6, requests=50_000)]
+    per_server = [sample(rng, p) for p in fleet]
+    p99s = [percentile(v, 0.99) for v in per_server]
+    pooled = [x for v in per_server for x in v]
+    return {
+        &quot;mean_of_p99s_ms&quot;: round(mean(p99s), 1),
+        &quot;max_of_p99s_ms&quot;: round(max(p99s), 1),
+        &quot;true_pooled_p99_ms&quot;: round(percentile(pooled, 0.99), 1),
+        &quot;true_pooled_p50_ms&quot;: round(percentile(pooled, 0.50), 1),
+    }
+
+
+def p99_spread(samples: int, trials: int = 300, seed: int = 5) -&gt; dict[str, float]:
+    &quot;&quot;&quot;Repeat a measurement and report how far the estimated p99 moves.&quot;&quot;&quot;
+    rng = random.Random(seed)
+    estimates = sorted(
+        percentile([rng.lognormvariate(math.log(20), 0.5) for _ in range(samples)], 0.99)
+        for _ in range(trials)
+    )
+    return {
+        &quot;samples&quot;: samples,
+        &quot;low_5pct_ms&quot;: round(estimates[int(trials * 0.05)], 1),
+        &quot;high_95pct_ms&quot;: round(estimates[int(trials * 0.95)], 1),
+    }
+
+
+def bucket_p99(values: list[float], bounds: list[float]) -&gt; float:
+    &quot;&quot;&quot;What a histogram with these upper bounds reports: linear interpolation inside a bucket.&quot;&quot;&quot;
+    ordered = sorted(values)
+    rank = 0.99 * len(ordered)
+    below = 0
+    lower = 0.0
+    for upper in bounds:
+        count = bisect_left(ordered, upper) - below
+        if below + count &gt;= rank:
+            return lower + (upper - lower) * (rank - below) / max(count, 1)
+        below += count
+        lower = upper
+    return bounds[-1]
+
+
+def bucket_effect(seed: int = 9) -&gt; dict[str, float]:
+    rng = random.Random(seed)
+    values = [rng.lognormvariate(math.log(20), 0.5) for _ in range(100_000)]
+    return {
+        &quot;exact_p99_ms&quot;: round(percentile(values, 0.99), 1),
+        &quot;coarse_buckets_p99_ms&quot;: round(bucket_p99(values, [10, 100, 1_000]), 1),
+        &quot;default_like_buckets_p99_ms&quot;: round(bucket_p99(values, [5, 10, 25, 50, 100, 250, 500, 1_000]), 1),
+        &quot;fine_buckets_p99_ms&quot;: round(bucket_p99(values, [20, 30, 40, 50, 55, 60, 65, 70, 80, 100, 1_000]), 1),
+    }
+
+
+def window_effect(seed: int = 13) -&gt; dict[str, float]:
+    &quot;&quot;&quot;A 5-minute incident hides inside a 1-hour p99 if it covers under 1% of requests.&quot;&quot;&quot;
+    rng = random.Random(seed)
+    normal = [rng.lognormvariate(math.log(20), 0.3) for _ in range(359_000)]
+    incident = [rng.lognormvariate(math.log(2_000), 0.2) for _ in range(1_000)]
+    return {
+        &quot;hour_p99_ms&quot;: round(percentile(normal + incident, 0.99), 1),
+        &quot;incident_window_p50_ms&quot;: round(percentile(incident, 0.5), 1),
+        &quot;incident_share_pct&quot;: round(100 * len(incident) / (len(normal) + len(incident)), 2),
+    }
+
+
+def main() -&gt; int:
+    print(json.dumps({
+        &quot;average_of_p99s&quot;: average_of_p99s(),
+        &quot;stability&quot;: [p99_spread(n) for n in (100, 1_000, 10_000)],
+        &quot;bucket_effect&quot;: bucket_effect(),
+        &quot;window_effect&quot;: window_effect(),
+    }, indent=2))
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/p99-latency/examples/typescript
+pnpm install --ignore-workspace</code></pre>
+<h3 id="run">Run</h3>
+<p>Start the service:</p>
+<pre class="code"><code class="language-bash">PORT=3000 pnpm start</code></pre>
+<p>In another terminal, send 500 requests and read the percentiles:</p>
+<pre class="code"><code class="language-bash">for i in $(seq 1 500); do curl -s localhost:3000/work &gt;/dev/null; done
+curl -s localhost:3000/metrics/latency | jq -c .</code></pre>
+<p>Then run the analysis:</p>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run python -m app.main | jq -c '.average_of_p99s, .stability[], .bucket_effect, .window_effect'</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>In the service, about 2% of requests take the 200 ms path, so p50 stays near 6 ms, and p99 lands just above 200 ms. Exact values vary because the slow path is random. The analysis output is seeded, and measured on the review date as:</p>
+<pre class="code"><code class="language-json">{&quot;mean_of_p99s_ms&quot;:180.3,&quot;max_of_p99s_ms&quot;:1227.2,&quot;true_pooled_p99_ms&quot;:649.1,&quot;true_pooled_p50_ms&quot;:21.4}
+{&quot;samples&quot;:100,&quot;low_5pct_ms&quot;:45.2,&quot;high_95pct_ms&quot;:77.2}
+{&quot;samples&quot;:1000,&quot;low_5pct_ms&quot;:57.2,&quot;high_95pct_ms&quot;:70.2}
+{&quot;samples&quot;:10000,&quot;low_5pct_ms&quot;:62.1,&quot;high_95pct_ms&quot;:65.9}
+{&quot;exact_p99_ms&quot;:64.3,&quot;coarse_buckets_p99_ms&quot;:99.1,&quot;default_like_buckets_p99_ms&quot;:85.7,&quot;fine_buckets_p99_ms&quot;:64.4}
+{&quot;hour_p99_ms&quot;:41.7,&quot;incident_window_p50_ms&quot;:2011.8,&quot;incident_share_pct&quot;:0.28}</code></pre>
+<p>Read those lines as four separate warnings. The averaged p99 is 3.6 times too low, 100 samples leave a wide range, buckets move the answer from 64 ms to 99 ms, and a 2-second incident is invisible in the hourly p99.</p>
+<h3 id="cleanup">Cleanup</h3>
+<p>Stop the service with Ctrl-C, then:</p>
+<pre class="code"><code class="language-bash">rm -rf ../typescript/node_modules .venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>{&quot;count&quot;:0}</code> from the metrics route: send traffic to <code>/work</code> first.</li><li>Percentile values look too high: an event loop busy with other work adds to all measurements.</li><li>The analysis takes a few seconds, since it sorts over a million values.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Which number is right?</h3><p>Server A handled 90,000 requests with a p99 of 50 ms. Server B handled 10,000 with a p99 of 800 ms. What can you say about the combined p99 from these numbers alone? What would you need in order to compute it?</p><details class="disclosure"><summary>Hint</summary><p>Find which ranks matter. The combined p99 leaves 1,000 requests above it.</p></details><details class="disclosure"><summary>Solution</summary><p>You can only bound it. A has 900 requests over 50 ms, and B has 100 requests over 800 ms. Exactly 1,000 requests lie above the combined p99, so it depends on how the rest of B is distributed. If nearly all of B is above 50 ms, the combined value is well above 50 ms, and it can't exceed 800 ms in this case. The average, 425 ms, and the weighted average, 125 ms, have no justification. You need histograms from both servers.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Computing a traffic-weighted average and calling it correct, because it looks more careful. It is still wrong.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> Latency improved during the outage</h3><p>During an outage, your error rate hits 40% and your p99 falls from 300 ms to 90 ms. Find two possible explanations, and how you would confirm which applies.</p><details class="disclosure"><summary>Hint</summary><p>Think about which requests are no longer in the population.</p></details><details class="disclosure"><summary>Solution</summary><p>Explanation 1: timed-out or failed requests are excluded from the histogram, so what remains are healthy fast requests. Confirm by checking whether the histogram counts match total requests, and whether the status label includes failures. Explanation 2: failures are fast, such as immediate 503 responses from a broken dependency, and they are pulling down the distribution. Confirm by splitting latency by status class. Report success latency and failure latency separately, and count timeouts at their full duration.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Concluding that the system was faster. Looking at a latency graph without the error rate next to it.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Reduce the cost of histograms</h3><p>You have 500 routes, 4 status classes, 20 buckets, and 1,000 instances, scraped every 30 s at an assumed 2 bytes per sample. Find series and storage per day. Then propose changes reducing it by at least 95% for long-term storage, while still supporting fleet SLOs.</p><details class="disclosure"><summary>Hint</summary><p>Which label multiplies the most, and which questions actually require it?</p></details><details class="disclosure"><summary>Solution</summary><p>Series: 500 × 4 × 20 × 1,000 = 40,000,000. Samples: 1,333,333 per second. Storage: 1,333,333 × 86,400 × 2 B ≈ 230 GB per day. Aggregating away the instance label for long-term retention gives 40,000 series, a 99.9% reduction, at about 230 MB per day. Keep instance-level data for only a few days and for high-traffic routes. Reduce buckets to about 10 around each target if needed.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Dropping histogram buckets and storing per-instance percentiles, which ruins the ability to merge. Removing the status label, which mixes fast failures with successes.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> A latency SLO for a low-traffic admin API</h3><p>An admin API receives 50 requests per hour. A manager wants &quot;p99 under 500 ms, alert within 5 minutes&quot;. Explain what is wrong, then design what you would do instead.</p><details class="disclosure"><summary>Hint</summary><p>Count how many samples exist in 5 minutes, and how many of them would determine a p99.</p></details><details class="disclosure"><summary>Solution</summary><p>Five minutes contains about 4 requests, so a p99 would simply be the maximum of those. Instead: define a threshold SLI, the proportion of requests under 500 ms, evaluated over 28 days; that's about 33,600 requests, giving a meaningful ratio. For quick detection, use synthetic probes every minute, and alert when several in a row fail. Log every slow request. Page only if the workflow matters enough, since admin tools may tolerate a next-day response.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Applying a high-traffic template. Alerting on one slow request. Lowering the bar without telling stakeholders why the original request can't work.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> Dashboards green, customers angry</h3><p>A large customer reports timeouts for the last 3 hours. Your overall p99 meets its target. Describe your investigation using histograms, traces, and logs, and name the lasting fixes.</p><details class="disclosure"><summary>Hint</summary><p>A global percentile allows 1% of traffic to fail completely, and one customer can be under that 1%.</p></details><details class="disclosure"><summary>Solution</summary><p>If that customer is under 1% of traffic, all of its requests can be slow with no change to the global p99. Filter load-balancer logs by the customer's identifier and compute its percentiles and error rate. Look at routes, shard, or region specific to it, and sample its traces. A likely cause is a hot shard or a large-tenant query. Mitigate for that customer first, and update them. Lasting fixes: per-tenant-class SLIs, explicit SLIs for top customers, alerting on proportion of tenants affected, and per-shard views.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Telling the customer the metrics look fine. Adding one metric label per tenant, which could overwhelm the metrics system.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<p>The <a href="https://opentelemetry.io/docs/specs/otel/metrics/data-model/" rel="noopener noreferrer">OpenTelemetry metrics data model</a>, a living specification, defines explicit-bucket and exponential histograms. The exponential form gives bounded relative error without manual bucket selection. There is no single standard for percentile calculation: tools differ in interpolation, so note the method. <a href="https://www.rfc-editor.org/rfc/rfc7679.html" rel="noopener noreferrer">RFC 7679</a>, January 2016, covers delay percentiles in network measurement.</p>
+<h3 id="established-practice">Established practice</h3>
+<p>Prometheus's <a href="https://prometheus.io/docs/practices/histograms/" rel="noopener noreferrer">Histograms and summaries</a> documentation explains why summaries generally can't be aggregated and how bucket choice affects error. <a href="http://hdrhistogram.org/" rel="noopener noreferrer">HdrHistogram</a> is a widely used log-linear implementation. <a href="https://sre.google/sre-book/service-level-objectives/" rel="noopener noreferrer">Service Level Objectives</a>, from <em>Site Reliability Engineering</em>, 2016, recommends percentiles rather than averages. These are project documentation and published practice, not formal standards.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Cloud monitoring and observability vendors offer histogram and sketch types. Read how each computes percentiles, whether they merge correctly across dimensions, and what their sampling does to tails.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Native or exponential histograms reduce series counts and bucket-tuning work, and adoption is growing in Prometheus and OpenTelemetry. Mergeable sketches such as <a href="https://arxiv.org/abs/1908.10693" rel="noopener noreferrer">DDSketch</a>, Masson et al., 2019, offer relative-error guarantees. Check support in your full metrics pipeline before depending on either.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>Prometheus 3.0, released in 2024, continued developing native histograms. Verify their current status in your version, because the details have been changing.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Switching histogram types can break existing dashboards and historical comparison. Exemplars and exponential histograms require support from every component between application and dashboard.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What does p99 mean?</summary><p><strong>Strong answer.</strong> 99% of requests in a stated window finish within that time, so 1 in 100 are slower. It says nothing about how much slower they are. I would state the measurement point and window as well.</p>
+<p><strong>Why it is asked.</strong> It's a basic term that many people use loosely.</p>
+<p><strong>Weak-answer warning signs.</strong> Calling it the &quot;average of the slowest&quot;, or leaving out the window.</p>
+<p><strong>Follow-up.</strong> A page makes 50 requests. How often does a user see at least one p99-level request?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> Why is p99 better than the average?</summary><p><strong>Strong answer.</strong> Latency distributions are skewed, so an average can match no real request, and it hides a slow group. p99 reveals the slow group directly. I would still look at several percentiles together, since p99 doesn't describe everything.</p>
+<p><strong>Why it is asked.</strong> It checks a basic monitoring principle.</p>
+<p><strong>Weak-answer warning signs.</strong> Saying p99 is always the only metric needed.</p>
+<p><strong>Follow-up.</strong> When is the mean still useful?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> Can you average p99s from several servers?</summary><p><strong>Strong answer.</strong> No. A percentile depends on rank across all data, which the individual numbers don't preserve. Export histograms, sum counts per bucket, and then compute the percentile.</p>
+<p><strong>Why it is asked.</strong> It's a very common production mistake.</p>
+<p><strong>Weak-answer warning signs.</strong> Suggesting a weighted average as a fix.</p>
+<p><strong>Follow-up.</strong> How does a histogram lose accuracy, and how can you control that?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How many samples do you need for a reliable p99?</summary><p><strong>Strong answer.</strong> Only about n ÷ 100 samples lie beyond the p99, so the estimate rests on those. As a rule of thumb, at least 1,000 total gives 10 tail samples, and more for important decisions. I would quantify it by bootstrap or binomial ranks. Low-traffic routes should use a ratio SLI over a longer window.</p>
+<p><strong>Why it is asked.</strong> It shows statistical maturity.</p>
+<p><strong>Weak-answer warning signs.</strong> Not realizing that sample count matters.</p>
+<p><strong>Follow-up.</strong> How does this change for p99.9?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you choose histogram buckets?</summary><p><strong>Strong answer.</strong> Put boundaries around the target, since accuracy there matters most, and cover the range up to the timeout. Exponential spacing gives bounded relative error. If the target is a threshold, an exact boundary at it gives a precise ratio. Newer exponential histograms avoid much of this manual work.</p>
+<p><strong>Why it is asked.</strong> It's practical knowledge from running real systems.</p>
+<p><strong>Weak-answer warning signs.</strong> Accepting defaults without checking them.</p>
+<p><strong>Follow-up.</strong> What changes if you need to compare before and after a layout change?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Summary or histogram metrics? What's the trade-off?</summary><p><strong>Strong answer.</strong> A client-side summary calculates quantiles accurately on each instance but can't be aggregated across instances. A histogram has bucket error but merges freely. For a fleet, I would nearly always choose histograms, or mergeable sketches.</p>
+<p><strong>Why it is asked.</strong> This directly affects monitoring correctness.</p>
+<p><strong>Weak-answer warning signs.</strong> Not knowing the aggregation limit.</p>
+<p><strong>Follow-up.</strong> When would you still use a summary?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> p50 is flat, and p99 doubled. What might be happening?</summary><p><strong>Strong answer.</strong> A subset is slower: one instance, shard, route, or cache-miss path, or perhaps garbage-collection pauses. I would split by those dimensions and inspect slow traces. If both had moved, I'd suspect a general slowdown or capacity problem instead.</p>
+<p><strong>Why it is asked.</strong> It tests diagnostic reasoning.</p>
+<p><strong>Weak-answer warning signs.</strong> Adding capacity immediately.</p>
+<p><strong>Follow-up.</strong> What would a heat map show you that percentiles don't?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> Would you set an SLO on p99 or on the proportion of requests under a threshold?</summary><p><strong>Strong answer.</strong> Usually the proportion. It's a count of good and total requests, so it aggregates correctly, gives a direct error budget, and handles low traffic better. I'd still display p99 for diagnosis. The threshold needs a bucket boundary at the target.</p>
+<p><strong>Why it is asked.</strong> It reveals practical SLO experience.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating them as the same thing.</p>
+<p><strong>Follow-up.</strong> How do you pick the threshold?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> A global p99 meets its objective, but a key customer is suffering. How do you redesign the measurement?</summary><p><strong>Strong answer.</strong> A global percentile allows a small customer's traffic to be entirely bad. I would add SLIs by customer tier and for the largest customers, measure the share of tenants within target, and keep per-tenant detail in logs to control cardinality. Contract SLAs may also need their own measurement.</p>
+<p><strong>Why it is asked.</strong> Aggregates hiding real pain is a common staff-level issue.</p>
+<p><strong>Weak-answer warning signs.</strong> Adding a tenant label for all tenants with no thought to cost.</p>
+<p><strong>Follow-up.</strong> How do you report this to account managers?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you check that a metrics pipeline reports latency correctly?</summary><p><strong>Strong answer.</strong> Inject known delays and confirm the reported percentile, compare against logs or a load balancer for the same window, test during a failure to confirm timeouts are counted, and alert on dropped samples and scrape failures. Measurement deserves tests as much as the service does.</p>
+<p><strong>Why it is asked.</strong> Silent measurement bugs mislead whole organizations.</p>
+<p><strong>Weak-answer warning signs.</strong> Trusting a dashboard because it has decimal places.</p>
+<p><strong>Follow-up.</strong> How often would you run this check?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> Teams across the company report latency in incompatible ways. What would you do?</summary><p><strong>Strong answer.</strong> I would define a small standard: measurement points, population, histogram type, and SLI form, delivered through shared libraries and defaults so it takes no extra effort. I would migrate tier-1 services first, verify old and new agree or explain why they don't, and restate numbers honestly where they change. I wouldn't mandate everything at once.</p>
+<p><strong>Why it is asked.</strong> It's standardization work with a real political cost, as numbers will get worse on paper.</p>
+<p><strong>Weak-answer warning signs.</strong> Issuing a policy with no tooling or migration plan.</p>
+<p><strong>Follow-up.</strong> A team's reported p99 triples after the migration. How do you handle that conversation?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> An executive asks for a single latency number for the company. How do you respond?</summary><p><strong>Strong answer.</strong> I would offer something meaningful instead: the percentage of key user journeys meeting their targets, tracked over time, by region. A single company p99 mixes unlike things, and it could improve while important journeys get worse. I would give one clear headline, backed by a journey-level breakdown.</p>
+<p><strong>Why it is asked.</strong> It tests turning technical accuracy into useful executive communication.</p>
+<p><strong>Weak-answer warning signs.</strong> Either supplying a meaningless number or refusing outright.</p>
+<p><strong>Follow-up.</strong> How do you stop this number from being gamed?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>p99 means position 99 of 100, for a stated population, window, and measurement point.</li><li>Never average percentiles. Merge histograms, then compute.</li><li>Buckets determine accuracy, so place them around the target.</li><li>Few samples give unstable tails, and long windows hide short incidents.</li><li>Include failures and timeouts, or say clearly that they're excluded.</li><li>A threshold ratio is often a better SLI than a percentile.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Are the population, window, and measurement point stated?</li><li>Does the query merge histograms before computing?</li><li>Is a bucket boundary near the target?</li><li>Are there enough samples in the window?</li><li>Are failures and timeouts counted?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Histograms exist per route at the load balancer or server.</li><li>Route labels are normalized, to protect cardinality.</li><li>Alerts use ratios and burn rates.</li><li>Slow requests link to traces.</li><li>The pipeline has been tested using injected delay.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Nearest rank:</strong> a percentile method that picks an actual sample at a computed position.</li><li><strong>Mergeable:</strong> summaries can be combined without loss beyond their stated error.</li><li><strong>Exemplar:</strong> a sample trace ID attached to a metric bucket.</li><li><strong>Heat map:</strong> a time plot of latency density across buckets.</li><li><strong>Coordinated omission:</strong> a measurement error in which stalls suppress samples.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="3"><fieldset><legend>1. You have per-server p99 values and request counts. How can you compute the fleet p99 exactly?</legend><label><input type="radio" name="quiz-0" value="0"> Average them.</label><label><input type="radio" name="quiz-0" value="1"> Weight the average by request count.</label><label><input type="radio" name="quiz-0" value="2"> Take the maximum.</label><label><input type="radio" name="quiz-0" value="3"> You cannot. You need the histograms or raw samples.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> You cannot. You need the histograms or raw samples..</p><p>Percentile values don't preserve the information needed. Only merged counts or raw data can do this.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. A page makes 100 independent requests. What is the chance at least one exceeds the p99?</legend><label><input type="radio" name="quiz-1" value="0"> 1%</label><label><input type="radio" name="quiz-1" value="1"> 10%</label><label><input type="radio" name="quiz-1" value="2"> 63%</label><label><input type="radio" name="quiz-1" value="3"> 99%</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 63%.</p><p>1 − 0.99^100 ≈ 63.4%, which is why p99 matters more than it sounds.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>3. Your p99 falls during an outage, while the error rate rises. What is the most likely explanation?</legend><label><input type="radio" name="quiz-2" value="0"> The system got faster.</label><label><input type="radio" name="quiz-2" value="1"> Failures are either excluded or very fast, which changes the population.</label><label><input type="radio" name="quiz-2" value="2"> Histograms always improve under load.</label><label><input type="radio" name="quiz-2" value="3"> The window is too short.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Failures are either excluded or very fast, which changes the population..</p><p>Compare latency by status, and count timeouts at their full duration.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>4. With 100 samples, how many lie beyond the p99?</legend><label><input type="radio" name="quiz-3" value="0"> About 50</label><label><input type="radio" name="quiz-3" value="1"> About 10</label><label><input type="radio" name="quiz-3" value="2"> About 1</label><label><input type="radio" name="quiz-3" value="3"> None</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> About 1.</p><p>One sample largely determines the estimate, which explains the wide range in the stability table.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>5. Why is &quot;percentage of requests under 300 ms&quot; often a better SLI than p99?</legend><label><input type="radio" name="quiz-4" value="0"> It is always lower.</label><label><input type="radio" name="quiz-4" value="1"> It aggregates correctly from counts and gives a direct error budget.</label><label><input type="radio" name="quiz-4" value="2"> It needs no measurement.</label><label><input type="radio" name="quiz-4" value="3"> It removes the tail.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> It aggregates correctly from counts and gives a direct error budget..</p><p>Good and total counts add across servers and windows, and they map directly to a budget.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Next, read <a href="../../topics/tail-latency/index.html">Tail latency</a> for what happens beyond p99, Metric cardinality and histogram design <span class="muted">(not yet written)</span> for histogram design at scale, and Multi-window burn-rate alerts <span class="muted">(not yet written)</span> for alerting on these numbers. Benchmark design and coordinated omission <span class="muted">(not yet written)</span> explains how load tests can corrupt percentile measurements.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/throughput/index.html">Throughput</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/tail-latency/index.html">Tail latency</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

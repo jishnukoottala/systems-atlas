@@ -1,0 +1,11 @@
+---
+title: "Lifecycle of a workload model"
+---
+stateDiagram-v2
+    [*] --> Assumed: new feature with no traffic
+    [*] --> Measured: trace of existing traffic
+    Assumed --> Measured: first production data
+    Measured --> Validated: replay matches production
+    Validated --> InUse: drives sizing and tests
+    InUse --> Stale: measured drift exceeds tolerance
+    Stale --> Measured: new trace taken

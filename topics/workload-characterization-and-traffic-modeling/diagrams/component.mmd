@@ -1,0 +1,13 @@
+---
+title: "Component view of the generator and two analyzers"
+---
+flowchart LR
+    G["Python generator: sine, burst, Zipf, lognormal"] -->|"NDJSON file"| F["trace.ndjson"]
+    G --> B["Python characterize: exact, in memory"]
+    F -->|"read line by line"| I["TypeScript Profiler.ingest"]
+    I --> C1["Per-second counts"]
+    I --> C2["Space-Saving top-K: 1,000 counters"]
+    I --> C3["Size histogram: power-of-two buckets"]
+    C1 --> O["Profile JSON"]
+    C2 --> O
+    C3 --> O

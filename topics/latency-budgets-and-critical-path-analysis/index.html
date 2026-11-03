@@ -1,0 +1,541 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latency budgets and critical-path analysis | Systems Atlas</title>
+<meta name="description" content="A latency budget divides a user-facing latency target among the steps that make up a request. Critical-path analysis finds the sequence of steps that actually d">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="A005">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Latency budgets and critical-path analysis</h1>
+<p class="meta-line">A005 · Intermediate · about 1.5 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>A latency budget divides a user-facing latency target among the steps that make up a request. Critical-path analysis finds the sequence of steps that actually determines total time: the longest path through the request's call graph. Only time saved on that path shortens the request.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Teams spend much of their performance effort on the wrong things. In a parallel stage, speeding up anything but the slowest branch saves nothing at all. Without budgets, every team adds &quot;just 10 ms&quot;, and a product slowly misses its target with no one responsible. A budget makes latency a shared, allocated resource, gives each team a number it can own, and provides the basis for sensible timeouts. A critical-path view also tells you what's worth funding: it shows a precise saving before anyone has written any code.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/latency/index.html">Latency</a>, <a href="../../topics/p99-latency/index.html">P99 latency</a></p><h3 id="study-time">Study time</h3><p>About 1.5 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p>Timeouts <span class="muted">(not yet written)</span>, Deadlines and cancellation propagation <span class="muted">(not yet written)</span>, <a href="../../topics/tail-latency/index.html">Tail latency</a>, <a href="../../topics/latency/index.html">Latency</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Build a call graph, then find its critical path and each step's slack.</li><li>Predict the saving from speeding up a step, including when it is zero.</li><li>Allocate a budget across steps, with reserves for retries and growth.</li><li>Explain why percentile budgets don't simply add, and when correlation breaks your assumptions.</li><li>Derive timeouts from a budget, and propagate deadlines.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A checkout must return in 300 ms at p99, and it currently takes about 265 ms in the median trace with occasional misses. Three teams volunteer optimizations. The pricing team can cut pricing from 40 ms to 10 ms with a new cache, at a cost of two engineer-months. Critical-path analysis shows that pricing runs in parallel with fraud and inventory, and fraud takes 90 ms. Pricing has 50 ms of slack, so the project would save exactly 0 ms.</p>
+<p>The fraud team offers to go from 90 ms to 40 ms. That's on the critical path, but inventory at 60 ms becomes the new longest branch once fraud drops below it, so the saving is 30 ms, not 50 ms. The largest step is payment at 120 ms, a third-party call which can't be sped up, though it might be moved after the response using an asynchronous confirmation. The team's plan changes completely, using only a call graph and some arithmetic. This lesson's TypeScript example computes these figures.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Think of preparing a dinner. The roast takes 90 minutes, the potatoes take 40, and the salad takes 10. All must be ready at once, so dinner takes 90 minutes. Buying a faster salad spinner doesn't serve dinner any sooner. That's the critical path: the roast. Once the roast is faster than the potatoes, they become the new thing you're waiting for. Budgeting says how long each dish may take if dinner has to be on the table by 7.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Cooking times are predictable, while service latencies are distributions: the path that's critical changes from request to request, so one request's critical path may not match another's. Cooks can also watch a clock and adapt, while a service needs a deadline passed to it explicitly. A pot also doesn't get slower because others are cooking, whereas services often slow each other through shared resources.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> steps, dependencies, budgets, deadlines, and traces.</li><li><strong>State:</strong> remaining budget as a request moves through the system.</li><li><strong>Flow:</strong> user target, allocation by step, per-call timeout, runtime deadline propagation, and measurement against budget.</li><li><strong>Invariant 1:</strong> request time equals the longest path through the graph.</li><li><strong>Invariant 2:</strong> a step with slack can slow down by that much with no effect on the request.</li><li><strong>Invariant 3:</strong> no call waits longer than the remaining budget.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th></tr></thead><tbody><tr><td>Call graph</td><td>Steps and dependencies for one request</td></tr><tr><td>Critical path</td><td>Longest route through the graph</td></tr><tr><td>Slack</td><td>How much a step can slow before it delays the whole</td></tr><tr><td>Earliest finish</td><td>Soonest a step can finish given its dependencies</td></tr><tr><td>Budget</td><td>Time allocated to a step</td></tr><tr><td>Reserve</td><td>Unallocated time, for retries, growth, and network</td></tr><tr><td>Deadline</td><td>An absolute time by which a request must finish</td></tr></tbody></table></div>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>Sequential steps add and parallel steps take their maximum, so request duration is the longest path. Compute it with a forward pass (each step's earliest finish equals its duration plus the latest dependency's finish) and a backward pass (the latest finish that doesn't delay the total). Slack is their difference. Steps with zero slack form the critical path. This is the classic Critical Path Method, developed for project scheduling in the 1950s, and it applies directly to requests.</p>
+<p>There's a catch that matters a great deal. Reducing a critical step only saves time until another path becomes longest. So savings are capped by the gap to the next-longest path. In the example, fraud leads inventory by 30 ms, so that's the most a fraud optimization alone can save.</p>
+<p>Budgets face a second catch: percentiles don't add. If delays are independent, it's unlikely that several steps are slow together, so the true p99 of a sum is less than the sum of p99s. In the Python example, the p99s total 451.9 ms, while the sequential p99 is only 311.2 ms. But if steps slow down together, due to a shared host or network, the p99 reaches 559.3 ms, above the naive sum. So a sum of p99s is neither a safe upper bound nor a good estimate. Measure the end-to-end percentile using traces, and treat per-step budgets as allocations for accountability.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p><strong>Forward pass:</strong> EF(s) = duration(s) + max(EF(d)) over all dependencies d.</p>
+<p><strong>Backward pass:</strong> LF(s) = min(LF(t) − duration(t)) over all successors t, with LF = total for steps that have no successors.</p>
+<p><strong>Slack:</strong> LF(s) − EF(s).</p>
+<p><strong>Checkout worked example:</strong> cart finishes at 5 + 10 + 25 = 40 ms. Then inventory finishes at 100, pricing at 80, and fraud at 130. Payment starts at 130 and finishes at 250, and writing the order finishes at 265. Pricing slack: 130 − 80 = 50 ms. Inventory slack: 30 ms.</p>
+<p><strong>Measured percentile combination</strong>, from a 100,000-trial simulation:</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Combination</th><th scope="col">p99</th></tr></thead><tbody><tr><td>Sum of each dependency's own p99</td><td>451.9 ms</td></tr><tr><td>Sequential, independent</td><td>311.2 ms</td></tr><tr><td>Sequential, correlated slowdowns</td><td>559.3 ms</td></tr><tr><td>Parallel, all four</td><td>206.0 ms</td></tr><tr><td>Slowest member's own p99</td><td>202.2 ms</td></tr></tbody></table></div>
+<p><strong>Timeout from budget:</strong> remaining = deadline − now − reserve for the rest of the path.</p>
+<h3 id="complexity">Complexity</h3>
+<p>The forward and backward passes visit every step and edge, so an efficient version is O(V + E). The example scans successors linearly for clarity, giving O(V × (V + E)) in the worst case, which is fine for a few dozen steps. Monte Carlo costs O(n × V) for n trials. Across real traces, critical paths must be computed per trace, then aggregated.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>Choose a journey and target: <code>POST /checkout</code>, p99 300 ms.</li><li>Build the call graph from traces, not from memory or diagrams.</li><li>Compute critical paths across many sampled traces, since the critical path varies.</li><li>Set aside a reserve, commonly 10% to 20%, for network hops and growth.</li><li>Allocate the rest to steps, based on what each can achieve.</li><li>Derive timeouts from allocations, and propagate a deadline along the path.</li><li>Report each team's use of its budget, then review changes to the budget.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-deadline"><figcaption>Remaining budget as a request moves along the path</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A request starts with a full budget. Each step consumes some. When enough remains the next call proceeds. If little remains, the service degrades by skipping optional work. If nothing remains, it fails fast rather than doing work that would be wasted.">stateDiagram-v2
+    [*] --&gt; BudgetFull: request received
+    BudgetFull --&gt; Spending: step begins
+    Spending --&gt; BudgetRemains: step finished, time left
+    BudgetRemains --&gt; Spending: next step begins
+    BudgetRemains --&gt; Degraded: too little left for optional step
+    Degraded --&gt; Spending: required step continues
+    Spending --&gt; FailedFast: deadline reached
+    BudgetRemains --&gt; Done: path complete
+    Done --&gt; [*]
+    FailedFast --&gt; [*]</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A request starts with a full budget. Each step consumes some. When enough remains the next call proceeds. If little remains, the service degrades by skipping optional work. If nothing remains, it fails fast rather than doing work that would be wasted.</p></figure>
+<p>The <code>Degraded</code> state is what makes budgets useful at runtime. With only 20 ms left, a service can skip recommendations and still complete the essential work. Without a deadline in hand, it can't know to do that. See Deadlines and cancellation propagation <span class="muted">(not yet written)</span>.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Parallelizing a sequential chain shortens the path, but only if the steps are truly independent. It also raises concurrent load, connection use, and the odds of meeting a slow outlier. When parallel branches share a resource, such as one database, they queue, and the apparent parallelism is partly fiction. Traces reveal this as spans that overlap on paper while their durations grow. See <a href="../../topics/tail-latency/index.html">Tail latency</a>.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Some steps have to be ordered: inventory reservation must precede payment capture to avoid charging for items you can't ship. That's a correctness constraint, so it limits how much parallelization is possible. When reviewing a graph, ask of each dependency edge if it reflects a data dependency, a correctness rule, or just the order someone wrote the code in. The last kind is often free to remove.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>The journey owner owns the overall target and allocation. Each service team owns its budget and may trade it through negotiation. The platform team owns the deadline propagation mechanism. Budget owners should be named, or budgets decay. Third-party calls need special treatment, since you own the timeout but not the latency.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: a checkout journey and where its budget goes</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. A client calls a gateway, then auth, then cart. Cart triggers inventory, pricing, and fraud in parallel. Those feed into payment, an external provider beyond a trust boundary, then an order write. Each service owns its data, and labels show the budget per step.">flowchart LR
+    C[&quot;Client&quot;] --&gt;|&quot;HTTPS, target p99 300 ms&quot;| G[&quot;Gateway: 5 ms&quot;]
+    G --&gt; A[&quot;Auth: 10 ms&quot;]
+    A --&gt; CA[&quot;Cart: 25 ms, owns carts&quot;]
+    CA --&gt;|&quot;gRPC, parallel&quot;| I[&quot;Inventory: 60 ms, owns stock&quot;]
+    CA --&gt;|&quot;gRPC, parallel&quot;| P[&quot;Pricing: 40 ms&quot;]
+    CA --&gt;|&quot;gRPC, parallel&quot;| F[&quot;Fraud: 90 ms, on critical path&quot;]
+    I --&gt; PAY
+    P --&gt; PAY
+    F --&gt; PAY
+    subgraph ext[&quot;External provider: outside our control&quot;]
+      PAY[&quot;Payment: 120 ms&quot;]
+    end
+    PAY --&gt; W[&quot;Order write: 15 ms, owns orders&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. A client calls a gateway, then auth, then cart. Cart triggers inventory, pricing, and fraud in parallel. Those feed into payment, an external provider beyond a trust boundary, then an order write. Each service owns its data, and labels show the budget per step.</p></figure>
+<p>Fraud determines when payment can begin, so it, not inventory or pricing, lies on the critical path. The external boundary around payment means the 40% of the budget that it takes isn't in your control, which suggests a different design question: must the customer wait for payment capture at all?</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the analyzer and simulation</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. The TypeScript analyzer validates and sorts steps, runs forward and backward passes, and outputs the critical path, slack, and what-if savings. The Python simulator samples dependency distributions for sequential, parallel, correlated, and deadline cases.">flowchart LR
+    subgraph ts[&quot;TypeScript: fixed durations&quot;]
+      S[&quot;Step list&quot;] --&gt; TO[&quot;topoSort: rejects cycles&quot;]
+      TO --&gt; FB[&quot;Forward and backward passes&quot;]
+      FB --&gt; CP[&quot;Critical path and slack&quot;]
+      FB --&gt; WI[&quot;whatIf: saving from a change&quot;]
+    end
+    subgraph py[&quot;Python: distributions&quot;]
+      D[&quot;Dependency distributions&quot;] --&gt; MC[&quot;Monte Carlo: 100,000 trials&quot;]
+      MC --&gt; R[&quot;Sum vs independent vs correlated vs parallel&quot;]
+      MC --&gt; DL[&quot;Deadline: success rate and time spent&quot;]
+    end</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. The TypeScript analyzer validates and sorts steps, runs forward and backward passes, and outputs the critical path, slack, and what-if savings. The Python simulator samples dependency distributions for sequential, parallel, correlated, and deadline cases.</p></figure>
+<p>The two examples address different questions. Fixed durations are clear for reasoning about structure, while distributions show what really happens to percentiles. Use the first to find what to work on, and the second to avoid over-trusting budget arithmetic.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: deadline propagation along the path</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. A gateway sets a deadline of 300 ms. Each service receives the remaining time, subtracts its own usage, and forwards the rest. Fraud has too little time left for its deep model, so it uses a fast model. Payment has its timeout set from what remains.">sequenceDiagram
+    participant G as Gateway
+    participant C as Cart
+    participant F as Fraud
+    participant P as Payment provider
+    G-&gt;&gt;C: Deadline: 295 ms remaining
+    C-&gt;&gt;F: Deadline: 255 ms remaining
+    Note over F: Enough time for the full model
+    F--&gt;&gt;C: Score after 90 ms
+    C-&gt;&gt;P: Remaining 165 ms, reserve 15 ms for write
+    P--&gt;&gt;C: Authorized after 120 ms
+    C--&gt;&gt;G: Complete with 30 ms to spare</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. A gateway sets a deadline of 300 ms. Each service receives the remaining time, subtracts its own usage, and forwards the rest. Fraud has too little time left for its deep model, so it uses a fast model. Payment has its timeout set from what remains.</p></figure>
+<p>The budget is passed as a value, so each hop can make local decisions. Timeouts for the final dependency are derived from what's actually left, after reserving time for later steps, and not from a static configuration value that's unaware of what has already happened.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: fixed timeouts and retries overrun the budget</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Each service has a fixed one second timeout. Payment stalls, and cart retries twice. The client gave up at 300 ms, but work continues for up to 3 seconds. Connection pools fill. A propagated deadline stops the work when the client has gone.">flowchart TD
+    A[&quot;Static 1 s timeout at every hop&quot;] --&gt; B[&quot;Payment stalls&quot;]
+    B --&gt; C[&quot;Cart waits 1 s, then retries twice&quot;]
+    C --&gt; D[&quot;3 s of work for a 300 ms target&quot;]
+    D --&gt; E[&quot;Client already gave up&quot;]
+    E --&gt; F[&quot;Connection pool fills with dead work&quot;]
+    F --&gt; G[&quot;Unrelated requests fail&quot;]
+    B -.-&gt;|&quot;with propagated deadline&quot;| H[&quot;Stops at remaining budget&quot;]
+    H -.-&gt; I[&quot;Fails fast and frees the connection&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Each service has a fixed one second timeout. Payment stalls, and cart retries twice. The client gave up at 300 ms, but work continues for up to 3 seconds. Connection pools fill. A propagated deadline stops the work when the client has gone.</p></figure>
+<p>Static timeouts are chosen without knowing the journey, so they frequently add up to several times the user's patience. The dashed route shows the fix. Note that 1,000 ms timeouts at a 2,000 requests-per-second rate means up to 2,000 calls in flight, compared with 240 in normal conditions (2,000 × 0.12 s). That's why pools fill so quickly. See Timeouts <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>Directs effort to changes that help, and prevents those that can't.</li><li>Turns a shared target into something each team can own.</li><li>Provides a principled basis for timeouts.</li><li>Prevents slow decay from many small additions.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Requires tracing, and upkeep as graphs change.</li><li>Budgets can cause arguments between teams.</li><li>Allocations are an accounting tool, as percentiles don't add up exactly.</li><li>A strict budget might discourage useful features if it's not negotiable.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>End-to-end SLO only:</strong> simple, and leaves no one accountable when it degrades.</li><li><strong>Performance regression tests:</strong> catch slow growth, and complement budgets.</li><li><strong>Asynchronous design:</strong> remove a step from the critical path altogether. See Synchronous versus asynchronous composition <span class="muted">(not yet written)</span>.</li><li><strong>Sampling profiler:</strong> better within a process, while critical paths work across services.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>For interactive journeys with several services, for strict SLAs, and whenever a new dependency is proposed for a critical journey.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Don't budget a simple service with one dependency, or batch jobs where total throughput is what matters. Avoid budgeting for exploratory features, where the user value isn't yet proven.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>The critical path shifts between steps in traces.</li><li>A journey's fan-out or dependencies change.</li><li>A team has been consuming over its budget for two windows.</li><li>The external provider's latency changes.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>2,000 checkouts per second at peak, a 300 ms p99 target, and the budget in the scenario. Assume a 10 ms cross-zone penalty during zone failure and a 200-connection limit per provider client pool.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Concurrent calls = rate (requests per second) × duration (seconds), from Little's Law.</li><li>Reserve (ms) = target − sum of the critical path.</li><li>Worst in-flight = rate × timeout.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Critical path: 5 + 10 + 25 + 90 + 120 + 15 = 265 ms.</li><li>Reserve: 300 − 265 = 35 ms, or 11.7%.</li><li>Payment concurrency: 2,000 × 0.120 s = 240 calls in flight.</li><li>At a 1 s timeout during a stall: 2,000 × 1 s = 2,000 calls in flight.</li><li>At a budget-derived 165 ms timeout: 2,000 × 0.165 s = 330 calls in flight.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>The 200-connection pool is already short of the normal 240. At 30% headroom: 240 ÷ 0.7 = 343 connections, which also just covers the 330 worst case when using deadlines. A static 1 s timeout would need about 2,000 connections, making the deadline the cheaper and safer choice.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>If a zone fails and calls become cross-zone at 2 ms per hop, then 6 hops add 12 ms, which is under the 35 ms reserve. One retry of a 90 ms fraud call would not fit in it, so retries on the critical path need another budget source, such as dropping an optional step. Payment latency doubling to 240 ms breaks the target by itself, so you need a plan for this: fail fast, or complete asynchronously.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-optimizing-off-the-critical-path">Optimizing off the critical path</h3><dl><dt>Trigger</dt><dd>A team speeds up a step with slack.</dd><dt>Symptoms</dt><dd>The work ships and end-to-end latency doesn't change.</dd><dt>Blast radius</dt><dd>Wasted engineering time, and lost trust in performance work.</dd><dt>Detection</dt><dd>Run a what-if on the call graph before starting.</dd><dt>Mitigation</dt><dd>Stop the project or redirect it.</dd><dt>Recovery</dt><dd>Reassess using traces.</dd><dt>Prevention</dt><dd>Require critical-path evidence for latency projects.</dd></dl></div>
+<div class="failure"><h3 id="failure-budget-creep">Budget creep</h3><dl><dt>Trigger</dt><dd>Each change adds a small cost, and nobody owns the total.</dd><dt>Symptoms</dt><dd>Slow, steady latency growth, and no single regression to blame.</dd><dt>Blast radius</dt><dd>The whole journey and eventually its SLO.</dd><dt>Detection</dt><dd>Track long-term per-step trends against budget.</dd><dt>Mitigation</dt><dd>Require removal of an equal cost before adding more.</dd><dt>Recovery</dt><dd>Run a focused reduction project.</dd><dt>Prevention</dt><dd>Assign owners, and gate new critical-path dependencies in review.</dd></dl></div>
+<div class="failure"><h3 id="failure-timeouts-longer-than-the-budget">Timeouts longer than the budget</h3><dl><dt>Trigger</dt><dd>Default or static timeouts ignore the journey's target.</dd><dt>Symptoms</dt><dd>Work continues long after clients leave, and pools fill during stalls.</dd><dt>Blast radius</dt><dd>Shared pools and unrelated routes.</dd><dt>Detection</dt><dd>Compare timeout configuration with journey budgets.</dd><dt>Mitigation</dt><dd>Lower timeouts on the affected calls.</dd><dt>Recovery</dt><dd>Drain stuck calls and restart if needed.</dd><dt>Prevention</dt><dd>Derive timeouts from deadlines. See Deadlines and cancellation propagation <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-assuming-percentiles-add">Assuming percentiles add</h3><dl><dt>Trigger</dt><dd>A plan treats a sum of p99s as the total p99.</dd><dt>Symptoms</dt><dd>Overinvestment where steps are independent, or surprise misses when they correlate.</dd><dt>Blast radius</dt><dd>Budgets and SLO accuracy.</dd><dt>Detection</dt><dd>Compare the budget arithmetic with traced end-to-end percentiles.</dd><dt>Mitigation</dt><dd>Use measured end-to-end p99 as the authority.</dd><dt>Recovery</dt><dd>Rework the allocation from traces.</dd><dt>Prevention</dt><dd>Treat allocations as accountability tools, and simulate when in doubt.</dd></dl></div>
+<div class="failure"><h3 id="failure-third-party-step-consumes-the-budget">Third-party step consumes the budget</h3><dl><dt>Trigger</dt><dd>An external provider slows down with no warning.</dd><dt>Symptoms</dt><dd>End-to-end misses, with all internal teams within budget.</dd><dt>Blast radius</dt><dd>The journey, and pools tied up in those calls.</dd><dt>Detection</dt><dd>Track provider latency and timeouts as a dependency.</dd><dt>Mitigation</dt><dd>Fail over to a second provider, or move to asynchronous processing.</dd><dt>Recovery</dt><dd>Reopen capacity once provider latency recovers.</dd><dt>Prevention</dt><dd>Design so that the customer does not wait for external steps where possible.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Budgets can pressure teams into removing security steps, which is a risk to watch for directly. A client-supplied deadline can also be abused: a very long deadline holds resources, and a very short one wastes work. An attacker who controls a slow upstream, such as a webhook target, can use up your budget. See Server-side request forgery <span class="muted">(not yet written)</span>.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Never trust a client's deadline as is. Cap it at the edge, then propagate your own. Treat partner calls as outside your control and give them strict timeouts.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Auth steps should have a budget rather than be skipped. Decide explicitly whether a timeout in authorization fails open or closed: for most actions, it should fail closed. Cache results within their revocation requirements to reduce critical-path time safely.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>A heavy tenant can make each step slower for everyone. Track budget use per tenant class, and isolate noisy traffic so that one tenant's slow queries don't consume another tenant's budget. See Tenant isolation and noisy-neighbor controls <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Traces used for critical-path analysis can include identifiers, query text, and payment details, so scrub attributes and restrict access. Don't put card numbers or tokens in span attributes.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Skipping optional steps under time pressure must not skip checks: fraud checks in the critical path could be bypassed if an attacker can force a low budget. Mark such steps as mandatory, so that a request fails rather than proceeding without them.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Use a per-step latency histogram labeled by journey, end-to-end journey latency, deadline-exceeded counts by hop, degraded-response counts, and budget consumption, which is the step's p99 divided by its allocation.</p>
+<h3 id="logs">Logs</h3>
+<p>When a deadline is exceeded, log the remaining budget on entry at each hop and the step that used it up. Log what was skipped in degraded responses.</p>
+<h3 id="traces">Traces</h3>
+<p>Traces are the source of truth for this topic. Compute the critical path per trace and aggregate: &quot;fraud was on the critical path in 72% of traces, and contributed an average of 88 ms.&quot; See Distributed tracing <span class="muted">(not yet written)</span>.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Show a stacked view of budget per step against the target, a trend line per step, and how often each step is on the critical path. This shows drift before it breaches the SLO.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Page on the journey SLO. Send tickets to the owning team when a step exceeds its budget for several days. Avoid paging on per-step budget, as budgets are accounting and don't directly measure user impact.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>99% of <code>POST /checkout</code> requests finish within 300 ms over 28 days.</li><li>The fraud step's p99 stays within 90 ms, reviewed weekly.</li><li>Under 0.1% of checkouts end with a deadline-exceeded response.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>When the journey misses its target: open slow traces, find the step that most often sits on the critical path, compare it with its budget, and check for recent changes in that step. If it's a third party, follow the degradation plan.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>TypeScript computes critical paths and what-if savings for a fixed graph. Python simulates distributions to show how percentiles combine and how deadlines bound work. Neither has an HTTP layer since both are analysis tools. In production, their input would come from your tracing system.</p>
+<h3 id="data-structures">Data structures</h3>
+<p><code>Step</code> holds an ID, a duration, and dependencies. <code>analyze</code> uses depth-first topological sorting with visiting and done states, which also catches cycles. Maps keep earliest and latest finish per step. Python uses Pydantic for <code>Dependency</code> and a small frozen dataclass holding the random generator.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>analyze(steps)</code> returns <code>{ totalMs, criticalPath, steps }</code>, and <code>whatIf(steps, id, newDurationMs)</code> returns before, after, and saved. Python's <code>sequential</code>, <code>parallel</code>, <code>correlated_sequential</code>, and <code>with_deadline</code> each return summary data.</p>
+<h3 id="error-handling">Error handling</h3>
+<p><code>GraphError</code> covers duplicate IDs, unknown dependencies, cycles, and an empty graph. A cycle error names the path. Negative durations are rejected, including <code>NaN</code>, through the check <code>!(duration &gt;= 0)</code>, which a plain <code>&lt; 0</code> test would miss.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>The analyzer is a pure function, so it needs no synchronization. The Python simulation models parallel execution by taking a maximum, and doesn't actually run anything concurrently. A real implementation would have to use cancellation to stop remaining branches once the deadline passes.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>Fixed durations hide variation. The graph has one shape, whereas real requests branch on cache hits and conditions, so one trace's critical path can differ from another's. The correlated model uses a single shared slowdown.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Compute critical paths from trace data per route, aggregate over many traces, include network gaps as steps, propagate deadlines with gRPC or a header, and publish budget dashboards.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Critical-path analysis over a call graph. A request is a directed acyclic graph of steps with
+// durations. The critical path is the longest route through it, and slack is how much a step can
+// slow down before it delays the request. Only steps with zero slack are worth speeding up first.
+import { fileURLToPath } from 'node:url';
+
+export interface Step { id: string; durationMs: number; dependsOn: string[] }
+export interface StepTiming { id: string; earliestStart: number; earliestFinish: number; slack: number; critical: boolean }
+export interface Analysis { totalMs: number; criticalPath: string[]; steps: StepTiming[] }
+
+export class GraphError extends Error {}
+
+function topoSort(steps: Step[]): Step[] {
+  const byId = new Map(steps.map((s) =&gt; [s.id, s]));
+  if (byId.size !== steps.length) throw new GraphError('Step IDs must be unique.');
+  const state = new Map&lt;string, 'visiting' | 'done'&gt;();
+  const order: Step[] = [];
+  const visit = (s: Step, trail: string[]): void =&gt; {
+    const seen = state.get(s.id);
+    if (seen === 'done') return;
+    if (seen === 'visiting') throw new GraphError(`Cycle: ${[...trail, s.id].join(' -&gt; ')}`);
+    state.set(s.id, 'visiting');
+    for (const d of s.dependsOn) {
+      const dep = byId.get(d);
+      if (!dep) throw new GraphError(`${s.id} depends on unknown step ${d}.`);
+      visit(dep, [...trail, s.id]);
+    }
+    state.set(s.id, 'done');
+    order.push(s);
+  };
+  for (const s of steps) visit(s, []);
+  return order;
+}
+
+export function analyze(steps: Step[]): Analysis {
+  if (steps.length === 0) throw new GraphError('At least one step is required.');
+  for (const s of steps) if (!(s.durationMs &gt;= 0)) throw new GraphError(`${s.id} has an invalid duration.`);
+  const order = topoSort(steps);
+  const finish = new Map&lt;string, number&gt;();
+  const start = new Map&lt;string, number&gt;();
+  for (const s of order) {
+    const es = Math.max(0, ...s.dependsOn.map((d) =&gt; finish.get(d) ?? 0));
+    start.set(s.id, es);
+    finish.set(s.id, es + s.durationMs);
+  }
+  const total = Math.max(...finish.values());
+  const latest = new Map&lt;string, number&gt;(); // latest allowed finish
+  for (const s of [...order].reverse()) {
+    const successors = steps.filter((o) =&gt; o.dependsOn.includes(s.id));
+    const lf = successors.length === 0 ? total : Math.min(...successors.map((o) =&gt; (latest.get(o.id) ?? total) - o.durationMs));
+    latest.set(s.id, lf);
+  }
+  const timings: StepTiming[] = order.map((s) =&gt; {
+    const ef = finish.get(s.id) ?? 0;
+    const slack = (latest.get(s.id) ?? total) - ef;
+    return { id: s.id, earliestStart: start.get(s.id) ?? 0, earliestFinish: ef, slack, critical: slack === 0 };
+  });
+  return { totalMs: total, criticalPath: timings.filter((t) =&gt; t.critical).map((t) =&gt; t.id), steps: timings };
+}
+
+// Shows what speeding up one step achieves. The saving is capped by the next-longest path.
+export function whatIf(steps: Step[], id: string, newDurationMs: number): { before: number; after: number; savedMs: number } {
+  const before = analyze(steps).totalMs;
+  const after = analyze(steps.map((s) =&gt; (s.id === id ? { ...s, durationMs: newDurationMs } : s))).totalMs;
+  return { before, after, savedMs: before - after };
+}
+
+export const CHECKOUT: Step[] = [
+  { id: 'gateway', durationMs: 5, dependsOn: [] },
+  { id: 'auth', durationMs: 10, dependsOn: ['gateway'] },
+  { id: 'cart', durationMs: 25, dependsOn: ['auth'] },
+  { id: 'inventory', durationMs: 60, dependsOn: ['cart'] },
+  { id: 'pricing', durationMs: 40, dependsOn: ['cart'] },
+  { id: 'fraud', durationMs: 90, dependsOn: ['cart'] },
+  { id: 'payment', durationMs: 120, dependsOn: ['inventory', 'pricing', 'fraud'] },
+  { id: 'write-order', durationMs: 15, dependsOn: ['payment'] },
+];
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    const a = analyze(CHECKOUT);
+    console.log(JSON.stringify({ totalMs: a.totalMs, criticalPath: a.criticalPath }));
+    for (const t of a.steps) console.log(JSON.stringify({ id: t.id, finish: t.earliestFinish, slack: t.slack }));
+    console.log(JSON.stringify({ optimizePricingTo10: whatIf(CHECKOUT, 'pricing', 10) }));
+    console.log(JSON.stringify({ optimizeFraudTo40: whatIf(CHECKOUT, 'fraud', 40) }));
+  } catch (err) {
+    console.error(JSON.stringify({ level: 'error', msg: 'analysis.failed', error: String(err) }));
+    process.exitCode = 1;
+  }
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Why percentile budgets do not simply add up, shown by seeded Monte Carlo simulation.
+
+Each dependency has its own latency distribution. Adding their p99s overstates sequential total p99
+when the delays are independent, and understates the effect of parallel branches. Timeouts should be
+set from the remaining budget, so this also shows how a deadline protects the total.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+import math
+import random
+from dataclasses import dataclass
+
+from pydantic import BaseModel, Field
+
+
+class Dependency(BaseModel):
+    name: str
+    median_ms: float = Field(gt=0)
+    sigma: float = Field(gt=0)
+
+
+class Summary(BaseModel):
+    p50_ms: float
+    p99_ms: float
+
+
+@dataclass(frozen=True)
+class Sampler:
+    rng: random.Random
+
+    def draw(self, d: Dependency) -&gt; float:
+        return self.rng.lognormvariate(math.log(d.median_ms), d.sigma)
+
+
+def percentile(values: list[float], q: float) -&gt; float:
+    ordered = sorted(values)
+    return ordered[math.ceil(q * len(ordered)) - 1]
+
+
+def summarize(values: list[float]) -&gt; Summary:
+    return Summary(p50_ms=round(percentile(values, 0.5), 1), p99_ms=round(percentile(values, 0.99), 1))
+
+
+def own_p99(d: Dependency, n: int, seed: int) -&gt; float:
+    s = Sampler(random.Random(seed))
+    return percentile([s.draw(d) for _ in range(n)], 0.99)
+
+
+def sequential(deps: list[Dependency], n: int, seed: int = 1) -&gt; Summary:
+    s = Sampler(random.Random(seed))
+    return summarize([sum(s.draw(d) for d in deps) for _ in range(n)])
+
+
+def parallel(deps: list[Dependency], n: int, seed: int = 1) -&gt; Summary:
+    s = Sampler(random.Random(seed))
+    return summarize([max(s.draw(d) for d in deps) for _ in range(n)])
+
+
+def correlated_sequential(deps: list[Dependency], n: int, slow_probability: float, slow_factor: float, seed: int = 1) -&gt; Summary:
+    &quot;&quot;&quot;All dependencies slow down together sometimes, as with a shared host or network problem.&quot;&quot;&quot;
+    rng = random.Random(seed)
+    s = Sampler(rng)
+    totals = []
+    for _ in range(n):
+        factor = slow_factor if rng.random() &lt; slow_probability else 1.0
+        totals.append(sum(s.draw(d) * factor for d in deps))
+    return summarize(totals)
+
+
+def with_deadline(deps: list[Dependency], budget_ms: float, n: int, seed: int = 1) -&gt; dict[str, float]:
+    &quot;&quot;&quot;Sequential calls, each limited to what remains of the budget. Fails fast when none remains.&quot;&quot;&quot;
+    s = Sampler(random.Random(seed))
+    ok = 0
+    spent: list[float] = []
+    for _ in range(n):
+        remaining = budget_ms
+        success = True
+        for d in deps:
+            t = s.draw(d)
+            if t &gt; remaining:
+                remaining = 0
+                success = False
+                break
+            remaining -= t
+        spent.append(budget_ms - remaining)
+        ok += success
+    return {&quot;success_pct&quot;: round(100 * ok / n, 2), &quot;max_spent_ms&quot;: round(max(spent), 1)}
+
+
+DEPS = [
+    Dependency(name=&quot;auth&quot;, median_ms=10, sigma=0.4),
+    Dependency(name=&quot;profile&quot;, median_ms=30, sigma=0.5),
+    Dependency(name=&quot;pricing&quot;, median_ms=40, sigma=0.5),
+    Dependency(name=&quot;inventory&quot;, median_ms=50, sigma=0.6),
+]
+
+
+def main() -&gt; int:
+    n = 100_000
+    p99s = {d.name: round(own_p99(d, n, 7), 1) for d in DEPS}
+    print(json.dumps({
+        &quot;per_dependency_p99_ms&quot;: p99s,
+        &quot;sum_of_p99s_ms&quot;: round(sum(p99s.values()), 1),
+        &quot;sequential_independent&quot;: sequential(DEPS, n).model_dump(),
+        &quot;sequential_correlated&quot;: correlated_sequential(DEPS, n, slow_probability=0.02, slow_factor=4).model_dump(),
+        &quot;parallel&quot;: parallel(DEPS, n).model_dump(),
+        &quot;deadline_300ms&quot;: with_deadline(DEPS, 300, n),
+        &quot;deadline_200ms&quot;: with_deadline(DEPS, 200, n),
+    }, indent=2))
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/latency-budgets-and-critical-path-analysis/examples/typescript
+pnpm install --ignore-workspace</code></pre>
+<h3 id="run">Run</h3>
+<pre class="code"><code class="language-bash">pnpm --silent start</code></pre>
+<p>Then run the simulation:</p>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run python -m app.main | jq -c .</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>Measured on the review date:</p>
+<pre class="code"><code class="language-json">{&quot;totalMs&quot;:265,&quot;criticalPath&quot;:[&quot;gateway&quot;,&quot;auth&quot;,&quot;cart&quot;,&quot;fraud&quot;,&quot;payment&quot;,&quot;write-order&quot;]}
+{&quot;id&quot;:&quot;inventory&quot;,&quot;finish&quot;:100,&quot;slack&quot;:30}
+{&quot;id&quot;:&quot;pricing&quot;,&quot;finish&quot;:80,&quot;slack&quot;:50}
+{&quot;optimizePricingTo10&quot;:{&quot;before&quot;:265,&quot;after&quot;:265,&quot;savedMs&quot;:0}}
+{&quot;optimizeFraudTo40&quot;:{&quot;before&quot;:265,&quot;after&quot;:235,&quot;savedMs&quot;:30}}</code></pre>
+<p>Pricing saves nothing, and a 50 ms improvement to fraud yields only 30 ms, as inventory takes over. The simulation prints:</p>
+<pre class="code"><code class="language-json">{&quot;per_dependency_p99_ms&quot;:{&quot;auth&quot;:25.4,&quot;profile&quot;:96.1,&quot;pricing&quot;:128.2,&quot;inventory&quot;:202.2},&quot;sum_of_p99s_ms&quot;:451.9,&quot;sequential_independent&quot;:{&quot;p50_ms&quot;:141.3,&quot;p99_ms&quot;:311.2},&quot;sequential_correlated&quot;:{&quot;p50_ms&quot;:142.7,&quot;p99_ms&quot;:559.3},&quot;parallel&quot;:{&quot;p50_ms&quot;:63.4,&quot;p99_ms&quot;:206.0},&quot;deadline_300ms&quot;:{&quot;success_pct&quot;:98.7,&quot;max_spent_ms&quot;:300},&quot;deadline_200ms&quot;:{&quot;success_pct&quot;:86.0,&quot;max_spent_ms&quot;:200}}</code></pre>
+<p>Notice that correlation barely changes p50, moving it from 141.3 to 142.7 ms, but it nearly doubles p99.</p>
+<h3 id="cleanup">Cleanup</h3>
+<pre class="code"><code class="language-bash">rm -rf ../typescript/node_modules .venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>Cycle:</code> errors name the loop in your graph, so remove one edge from it.</li><li>Numbers differ slightly on a different Python version if the random generator's behavior changes.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Where do you save time?</h3><p>Graph: A takes 10 ms, then B (50 ms) and C (30 ms) run in parallel, then D takes 20 ms. What's the total? What does each of these save: B to 40, B to 20, C to 10, D to 10?</p><details class="disclosure"><summary>Hint</summary><p>Find the longest path, then note when another path takes over.</p></details><details class="disclosure"><summary>Solution</summary><p>Total: 10 + 50 + 20 = 80 ms. B to 40: path is 70, saves 10. B to 20: C at 30 becomes longest, so the total is 60, saving 20, not 30. C to 10: saves 0, as C isn't critical. D to 10: saves 10, since D is on every path.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Assuming B to 20 saves 30. Thinking that speeding up C matters because it's slow in absolute terms.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> The critical path that moved</h3><p>Traces show that the search service's critical path is index lookup in 60% of requests and ranking in 35%. A team cut index lookup's p50 by half, yet the journey's p99 didn't change. Why might that be? How would you check?</p><details class="disclosure"><summary>Hint</summary><p>A p50 improvement and a p99 outcome concern different requests. Filter to the slow traces.</p></details><details class="disclosure"><summary>Solution</summary><p>The critical path over all traces differs from that of slow traces. Slow traces may be dominated by ranking, or by a specific slow subset. Filter traces at or above p99 and recompute critical-path contribution. Also, cutting p50 wouldn't help if its tail stayed the same. Report the step's own p99, and its share of slow-trace critical paths. Work should target what dominates slow requests.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Using average traces to make decisions about tail targets. Concluding that the optimization was measured incorrectly.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Design the timeouts</h3><p>Target: 500 ms overall at a 1,000 requests-per-second peak. Path: A (20 ms), B (80 ms), C (150 ms), D (external, 100 ms). Reserve 15%. Set a budget per step, and find the worst-case concurrent calls to D using a fixed 2 s timeout versus a deadline-derived timeout.</p><details class="disclosure"><summary>Hint</summary><p>Allocate proportionally from 425 ms. D's concurrency is rate × timeout.</p></details><details class="disclosure"><summary>Solution</summary><p>Sum: 350 ms. Available after reserve: 425 ms, leaving 75 ms to distribute. Budgets could be A 25, B 95, C 180, D 125. D at normal: 1,000 × 0.1 s = 100 calls. Fixed 2 s: 2,000 calls during a stall. Deadline-derived: at most the remaining budget, here 500 − 300 (time used so far by others, at their budget) = 200 ms, or 200 calls. That's a tenfold reduction in worst-case pool use.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Setting all timeouts at the overall target, so they stack up. Forgetting to keep some reserve.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> Shorten a checkout</h3><p>Using the checkout graph in this lesson, propose design changes to reach a 150 ms p99 for the customer-visible response. Say which steps stay synchronous, and what guarantee each change affects.</p><details class="disclosure"><summary>Hint</summary><p>Payment is 120 ms and external. Ask what the customer truly needs to know before seeing a response.</p></details><details class="disclosure"><summary>Solution</summary><p>Accept the order after reserving inventory and basic fraud checks, and capture payment asynchronously, telling the customer &quot;order received&quot;. Path: gateway 5, auth 10, cart 25, parallel stage at 60 (with fraud's deep model made asynchronous and a fast model at 30), write 15, for 115 ms. Effect on guarantees: the customer may later get a &quot;payment failed&quot; message, requiring a compensating flow, so you need a saga and clear messaging. Deep fraud decisions arrive late, so some orders get cancelled. Product must approve these. See Saga patterns <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Removing fraud checks outright. Ignoring the failed-payment path, or hiding from product that it is a change in user experience.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> The 800 ms retry</h3><p>Checkout's p99 jumped from 280 ms to 900 ms, and each service reports normal latency. Traces show one 800 ms gap in slow requests, inside the cart span. What's happening? What do you change now and later?</p><details class="disclosure"><summary>Hint</summary><p>A gap within a span is time not spent in any child span. Think about what might wait 800 ms and then quietly retry.</p></details><details class="disclosure"><summary>Solution</summary><p>The likely culprit is a client-side retry or connection wait, with a default timeout around 800 ms, perhaps after a dropped connection. Cart's call fails or stalls, and then retries with success, so the downstream service sees only the fast retry. Check client retry and timeout configuration, connection-pool wait, and any recent network or deployment changes. Short term: lower the timeout to the budget, and fix the cause of dropped connections. Later: instrument each retry attempt as a span, and propagate deadlines, so a retry gets only the remaining budget.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Trusting each service's own healthy metrics. Assuming the gap is meaningless, when it's the strongest clue.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<p><a href="https://www.w3.org/TR/trace-context/" rel="noopener noreferrer">W3C Trace Context</a>, November 2021, standardizes trace propagation, which makes critical-path analysis across services possible. <a href="https://grpc.io/docs/guides/deadlines/" rel="noopener noreferrer">gRPC deadlines</a> are part of that project's documentation, and they describe how deadlines propagate. HTTP has no standard header for deadlines: <a href="https://www.rfc-editor.org/rfc/rfc9110.html" rel="noopener noreferrer">RFC 9110</a>, June 2022, doesn't define one, so HTTP services use their own conventions.</p>
+<h3 id="established-practice">Established practice</h3>
+<p><a href="https://research.google/pubs/dapper-a-large-scale-distributed-systems-tracing-infrastructure/" rel="noopener noreferrer">Dapper</a>, Sigelman et al., 2010, shaped modern tracing. <a href="https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/" rel="noopener noreferrer">Timeouts, retries, and backoff with jitter</a>, from the Amazon Builders' Library, discusses setting timeouts from measured latency. <a href="https://research.google/pubs/the-tail-at-scale/" rel="noopener noreferrer">The Tail at Scale</a>, 2013, is the standard reference on variability. These are published practices, not formal standards.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Observability vendors offer trace waterfalls, and some calculate critical paths automatically. Service meshes can enforce per-route timeouts. Check whether a mesh's timeouts are coordinated with application retries.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Automated critical-path extraction from production traces is increasingly available in open-source and commercial tools. Adaptive deadlines and retries based on remaining budget are also used in some systems. Adoption data is limited, so treat this as an observation and not an established practice.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>OpenTelemetry has become a common source for trace data across vendors, which lowers the cost of this kind of analysis. No formal standard change was identified at the review date.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>This depends on trace coverage: a single uninstrumented hop appears as a gap. Budgets also require cross-team agreement. Sampling can miss rare slow paths, so keep slow traces preferentially.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What is a critical path?</summary><p><strong>Strong answer.</strong> The longest route through a request's dependency graph. It determines total time, so speeding up anything else saves nothing. A parallel stage contributes just its slowest branch.</p>
+<p><strong>Why it is asked.</strong> It's the core idea behind effective latency work.</p>
+<p><strong>Weak-answer warning signs.</strong> Adding up all steps, including parallel ones.</p>
+<p><strong>Follow-up.</strong> How would you find it in production?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is a latency budget?</summary><p><strong>Strong answer.</strong> Dividing a journey's target among its steps, with a reserve. Each team owns a number, and new dependencies have to fit. It keeps the target from eroding through many small additions.</p>
+<p><strong>Why it is asked.</strong> It checks that you can turn a target into ownership.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating it as a one-time calculation.</p>
+<p><strong>Follow-up.</strong> What happens when two teams both need more?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> If two parallel calls take 40 and 90 ms, what happens when you make the 40 ms one take 10 ms?</summary><p><strong>Strong answer.</strong> The request gets no faster, because it still waits for the 90 ms call. The 40 ms call had 50 ms of slack. It might still reduce load, but it won't reduce latency.</p>
+<p><strong>Why it is asked.</strong> It's a quick test of whether you apply the idea.</p>
+<p><strong>Weak-answer warning signs.</strong> Reporting a 30 ms saving.</p>
+<p><strong>Follow-up.</strong> What if the 90 ms call were reduced to 30 ms?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Can you add up per-step p99s to get the total p99?</summary><p><strong>Strong answer.</strong> No. If delays are independent, the sum overstates it, since steps are rarely slow together. In my simulation, 452 ms for the sum against 311 ms actual. If delays are correlated, it can understate: 559 ms. I would measure end-to-end from traces, and use per-step numbers only for accountability.</p>
+<p><strong>Why it is asked.</strong> It's a common mistake even among experienced engineers.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating the sum as a safe upper bound.</p>
+<p><strong>Follow-up.</strong> What causes correlation in practice?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How would you set timeouts for a chain of services?</summary><p><strong>Strong answer.</strong> From the budget and measured latency, with a timeout slightly above the dependency's high percentile, and below what the caller can afford. Better still, I would propagate a deadline, so each hop knows the remaining time. Outer timeouts must exceed inner ones, or work gets wasted.</p>
+<p><strong>Why it is asked.</strong> Bad timeouts cause cascading failures.</p>
+<p><strong>Weak-answer warning signs.</strong> A uniform default everywhere.</p>
+<p><strong>Follow-up.</strong> How do retries fit into this?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you find the critical path in a live system?</summary><p><strong>Strong answer.</strong> Compute it per trace, going back from the last-finishing span, then aggregate over many traces by route and percentile. Focus on slow traces, since their critical path is what matters for tail targets. Gaps in a trace indicate queueing or missing instrumentation.</p>
+<p><strong>Why it is asked.</strong> It moves from concept to practical execution.</p>
+<p><strong>Weak-answer warning signs.</strong> Reading one trace and generalizing from it.</p>
+<p><strong>Follow-up.</strong> Sampling keeps 1% of traces. How does this affect the analysis?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> A new feature adds 40 ms, and you have 35 ms of reserve. What do you do?</summary><p><strong>Strong answer.</strong> I would look at whether it must be on the critical path: maybe it can run in parallel, asynchronously, or be cached. Otherwise I'd find matching savings elsewhere, or make a visible decision to change the target, with the owner. I wouldn't simply let it slip through.</p>
+<p><strong>Why it is asked.</strong> Budgets only matter when they constrain something.</p>
+<p><strong>Weak-answer warning signs.</strong> Automatically approving or rejecting.</p>
+<p><strong>Follow-up.</strong> Who makes the final call?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you introduce latency budgets across several teams?</summary><p><strong>Strong answer.</strong> Start with one critical journey and real trace data. Agree on the target with its owner, allocate based on current use plus a reserve, and publish a dashboard. Make the budget part of design review for that journey only. Expand after showing results. I would keep budgets negotiable, so teams can trade.</p>
+<p><strong>Why it is asked.</strong> It's as much organizational as technical.</p>
+<p><strong>Weak-answer warning signs.</strong> A company-wide mandate from the start.</p>
+<p><strong>Follow-up.</strong> A team misses its budget for months. What do you do?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How do you handle a third-party step that dominates the path?</summary><p><strong>Strong answer.</strong> You can't speed it up, so I'd change its position: move it off the critical path using asynchronous processing, cache what can be cached, use a second provider, or set strict timeouts and a degradation plan. I would raise contract terms too, if it matters enough. Any of these has product implications that must be agreed upon.</p>
+<p><strong>Why it is asked.</strong> Real journeys depend on what you don't control.</p>
+<p><strong>Weak-answer warning signs.</strong> Only monitoring it.</p>
+<p><strong>Follow-up.</strong> What user experience change would asynchronous payment require?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you know that a parallelization project is worth doing?</summary><p><strong>Strong answer.</strong> Run a what-if on the graph using actual data. The saving is capped by the next-longest path. Then I'd consider the costs: more concurrent load, more pool use, and a higher chance of slow outliers. If the steps share a bottleneck, parallelism gives less than it appears to.</p>
+<p><strong>Why it is asked.</strong> Parallelizing is often proposed with no analysis.</p>
+<p><strong>Weak-answer warning signs.</strong> Assuming parallel always wins.</p>
+<p><strong>Follow-up.</strong> What does shared-database contention look like in a trace?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> How do you decide the target itself?</summary><p><strong>Strong answer.</strong> From user and business data, not convention. I would test conversion or task completion at different latencies, then compare against what the architecture permits. For example, payment alone may consume 40% of the budget. If the cost of the target exceeds its value, change it. If the value is high, restructure the journey.</p>
+<p><strong>Why it is asked.</strong> Principals question the premise as well as the plan.</p>
+<p><strong>Weak-answer warning signs.</strong> Accepting any number handed down.</p>
+<p><strong>Follow-up.</strong> How do you set a target for a new product with no data?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> An executive asks why you won't fund the pricing team's optimization, when pricing &quot;is slow&quot;. How do you explain it?</summary><p><strong>Strong answer.</strong> Plainly: &quot;Customers wait for the slowest of three parallel checks. Pricing finishes 50 ms before the slowest. So speeding it up won't change what customers experience. Moving payment off the wait would save 120 ms, so I recommend funding that.&quot; I'd bring a simple diagram and offer a cheap experiment to prove it.</p>
+<p><strong>Why it is asked.</strong> It tests clear, evidence-based communication.</p>
+<p><strong>Weak-answer warning signs.</strong> Using scheduling jargon, or leaving out an alternative.</p>
+<p><strong>Follow-up.</strong> The pricing team disagrees publicly. How do you handle it?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Sequential steps add, and parallel steps take the maximum.</li><li>Only the critical path shortens a request, and savings are capped by the next-longest path.</li><li>Slack tells you what not to optimize.</li><li>Percentile budgets don't add: the sum may overstate or understate.</li><li>Timeouts should come from the remaining budget, using propagated deadlines.</li><li>Moving a step off the path often beats making it faster.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Is the call graph from traces, not memory?</li><li>Is this step on the critical path for slow requests?</li><li>What is the saving, given the next-longest path?</li><li>Do timeouts fit within the budget, including retries?</li><li>Does each budget have an owner?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>The journey has an end-to-end SLO.</li><li>Deadlines propagate across services.</li><li>Per-step budgets and trends are on a dashboard.</li><li>External steps have timeouts and a degradation plan.</li><li>Mandatory steps can't be skipped under time pressure.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Critical path:</strong> the longest route through a request's graph.</li><li><strong>Slack:</strong> how far a step can slow without delaying the total.</li><li><strong>Reserve:</strong> deliberately unallocated budget.</li><li><strong>Deadline:</strong> an absolute time limit that's passed along a request.</li><li><strong>Earliest finish:</strong> the soonest a step can be done, given its dependencies.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="3"><fieldset><legend>1. What does speeding up a step with 50 ms of slack by 30 ms save end-to-end?</legend><label><input type="radio" name="quiz-0" value="0"> 30 ms</label><label><input type="radio" name="quiz-0" value="1"> 50 ms</label><label><input type="radio" name="quiz-0" value="2"> 20 ms</label><label><input type="radio" name="quiz-0" value="3"> 0 ms</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 0 ms.</p><p>It isn't on the critical path, so the request still waits for another step.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>2. Fraud (90 ms) leads inventory (60 ms) in a parallel stage. What does cutting fraud to 40 ms save?</legend><label><input type="radio" name="quiz-1" value="0"> 50 ms</label><label><input type="radio" name="quiz-1" value="1"> 30 ms</label><label><input type="radio" name="quiz-1" value="2"> 40 ms</label><label><input type="radio" name="quiz-1" value="3"> 0 ms</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 30 ms.</p><p>Inventory takes over at 60 ms, so the stage goes from 90 to 60 ms.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>3. Dependencies' own p99s total 452 ms. When independent and sequential, the request's p99 is most likely...</legend><label><input type="radio" name="quiz-2" value="0"> exactly 452 ms.</label><label><input type="radio" name="quiz-2" value="1"> lower than 452 ms.</label><label><input type="radio" name="quiz-2" value="2"> higher than 452 ms.</label><label><input type="radio" name="quiz-2" value="3"> unrelated to these.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> lower than 452 ms..</p><p>Several slow events rarely coincide when independent. The simulation measured 311 ms, though correlation can push it above 452 ms.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>4. At 2,000 requests per second, how many in-flight calls can a 1 s timeout produce during a stall?</legend><label><input type="radio" name="quiz-3" value="0"> 200</label><label><input type="radio" name="quiz-3" value="1"> 240</label><label><input type="radio" name="quiz-3" value="2"> 2,000</label><label><input type="radio" name="quiz-3" value="3"> 20,000</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 2,000.</p><p>Little's Law: 2,000 × 1 s = 2,000, which is far more than the normal 240.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>5. What's the best source for a call graph?</legend><label><input type="radio" name="quiz-4" value="0"> The original design document</label><label><input type="radio" name="quiz-4" value="1"> A team's memory</label><label><input type="radio" name="quiz-4" value="2"> Production traces</label><label><input type="radio" name="quiz-4" value="3"> A load balancer's configuration</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Production traces.</p><p>Traces show what actually runs, including conditionals and later additions.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Next, read Deadlines and cancellation propagation <span class="muted">(not yet written)</span> for deadline propagation, Timeouts <span class="muted">(not yet written)</span> for timeouts, and <a href="../../topics/tail-latency/index.html">Tail latency</a> for variability in fan-out. Synchronous versus asynchronous composition <span class="muted">(not yet written)</span> shows how to take a step out of the critical path with asynchronous design.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/back-of-the-envelope-capacity-estimation/index.html">Back-of-the-envelope capacity estimation</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/concurrency-utilization-saturation-and-bottlenecks/index.html">Concurrency, utilization, saturation, and bottlenecks</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

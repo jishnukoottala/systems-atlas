@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traceability | Systems Atlas</title>
+<meta name="description" content="Coverage of every required topic and system.">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="assets/styles.css">
+<script defer src="assets/progress.js"></script><script defer src="assets/app.js"></script>
+</head>
+<body >
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="index.html">Curriculum</a>
+    <a href="systems-dissect/index.html">Systems</a>
+    <a href="traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<main class="wrap" id="main"><h1>Traceability</h1>
+<p class="lede">Every required item and where it lives. Each original topic has its own canonical page, because none of the 111 originals is an exact duplicate of an additional topic. Closely related topics are cross-linked instead of merged.</p>
+<h2 id="original">Original topics (111)</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">No.</th><th scope="col">Original title</th><th scope="col">Canonical ID</th><th scope="col">Canonical title</th><th scope="col">Page</th><th scope="col">Coverage</th><th scope="col">Related additional topics</th></tr></thead><tbody>
+<tr><td>1</td><td>Idempotency keys</td><td>O001</td><td>Idempotency keys</td><td><code>topics/idempotency-keys/index.html</code></td><td>Planned, not yet written</td><td>Webhook replay protection and signature verification; Exactly-once claims versus end-to-end effects; Transactional outbox and inbox patterns; Durable timers and duplicate execution</td></tr>
+<tr><td>2</td><td>Rate limiting</td><td>O002</td><td>Rate limiting</td><td><code>topics/rate-limiting/index.html</code></td><td>Planned, not yet written</td><td>Load shedding and admission control; Tenant isolation and noisy-neighbor controls; GraphQL federation and query-complexity controls; Probabilistic data structures</td></tr>
+<tr><td>3</td><td>Reverse proxies</td><td>O003</td><td>Reverse proxies</td><td><code>topics/reverse-proxies/index.html</code></td><td>Planned, not yet written</td><td>Forward proxies, tunnels, ingress, and egress; L4 versus L7 load balancing</td></tr>
+<tr><td>4</td><td>Connection pooling</td><td>O004</td><td>Connection pooling</td><td><code>topics/connection-pooling/index.html</code></td><td>Planned, not yet written</td><td>File descriptors, sockets, and resource limits; Little’s Law and practical queueing theory; Blocking versus non-blocking I/O; Connection establishment, keep-alive, and draining</td></tr>
+<tr><td>5</td><td>N+1 queries</td><td>O005</td><td>N+1 queries</td><td><code>topics/n-1-queries/index.html</code></td><td>Planned, not yet written</td><td>Filtering, sorting, sparse fields, and bulk operations</td></tr>
+<tr><td>6</td><td>Caching strategies</td><td>O006</td><td>Caching strategies</td><td><code>topics/caching-strategies/index.html</code></td><td>Planned, not yet written</td><td>Cache admission and eviction algorithms; Cache stampedes and request coalescing; HTTP caching and conditional requests; Hot keys, hot partitions, and rebalancing</td></tr>
+<tr><td>7</td><td>Cache invalidation</td><td>O007</td><td>Cache invalidation</td><td><code>topics/cache-invalidation/index.html</code></td><td>Planned, not yet written</td><td>Cache stampedes and request coalescing; Change data capture; Origin shielding and CDN request collapsing</td></tr>
+<tr><td>8</td><td>Load balancing</td><td>O008</td><td>Load balancing</td><td><code>topics/load-balancing/index.html</code></td><td>Planned, not yet written</td><td>L4 versus L7 load balancing; Consistent and rendezvous hashing</td></tr>
+<tr><td>9</td><td>API gateways</td><td>O009</td><td>API gateways</td><td><code>topics/api-gateways/index.html</code></td><td>Planned, not yet written</td><td>Backend-for-frontend architecture</td></tr>
+<tr><td>10</td><td>Timeouts</td><td>O010</td><td>Timeouts</td><td><code>topics/timeouts/index.html</code></td><td>Planned, not yet written</td><td>Deadlines and cancellation propagation; Latency budgets and critical-path analysis</td></tr>
+<tr><td>11</td><td>GraphQL challenges</td><td>O011</td><td>GraphQL challenges</td><td><code>topics/graphql-challenges/index.html</code></td><td>Planned, not yet written</td><td>GraphQL federation and query-complexity controls; Backend-for-frontend architecture</td></tr>
+<tr><td>12</td><td>Gateways and routers</td><td>O012</td><td>Gateways and routers</td><td><code>topics/gateways-and-routers/index.html</code></td><td>Planned, not yet written</td><td>Service mesh architecture and trade-offs</td></tr>
+<tr><td>13</td><td>Retries</td><td>O013</td><td>Retries</td><td><code>topics/retries/index.html</code></td><td>Planned, not yet written</td><td>Retry budgets; API error models and partial success; Exactly-once claims versus end-to-end effects</td></tr>
+<tr><td>14</td><td>Exponential backoff</td><td>O014</td><td>Exponential backoff</td><td><code>topics/exponential-backoff/index.html</code></td><td>Planned, not yet written</td><td>Retry budgets</td></tr>
+<tr><td>15</td><td>Circuit breakers</td><td>O015</td><td>Circuit breakers</td><td><code>topics/circuit-breakers/index.html</code></td><td>Planned, not yet written</td><td>Graceful degradation and brownouts; Bulkheads and isolation pools; Retry budgets</td></tr>
+<tr><td>16</td><td>Race conditions</td><td>O016</td><td>Race conditions</td><td><code>topics/race-conditions/index.html</code></td><td>Planned, not yet written</td><td>Concurrency and race testing; Atomicity, visibility, and memory ordering; Isolation levels and transaction anomalies</td></tr>
+<tr><td>17</td><td>Deadlocks</td><td>O017</td><td>Deadlocks</td><td><code>topics/deadlocks/index.html</code></td><td>Planned, not yet written</td><td>Livelock, starvation, and lock-free programming; Pessimistic concurrency control</td></tr>
+<tr><td>18</td><td>Memory leaks</td><td>O018</td><td>Memory leaks</td><td><code>topics/memory-leaks/index.html</code></td><td>Planned, not yet written</td><td>CPU, heap, lock-contention, and I/O profiling</td></tr>
+<tr><td>19</td><td>Webhooks</td><td>O019</td><td>Webhooks</td><td><code>topics/webhooks/index.html</code></td><td>Planned, not yet written</td><td>Webhook replay protection and signature verification; Delivery semantics; Long-running operation APIs</td></tr>
+<tr><td>20</td><td>CORS</td><td>O020</td><td>CORS</td><td><code>topics/cors/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>21</td><td>Secrets management</td><td>O021</td><td>Secrets management</td><td><code>topics/secrets-management/index.html</code></td><td>Planned, not yet written</td><td>KMS, HSMs, and crypto agility; Workload identity; Supply-chain security, SBOMs, and provenance</td></tr>
+<tr><td>22</td><td>Database indexing</td><td>O022</td><td>Database indexing</td><td><code>topics/database-indexing/index.html</code></td><td>Planned, not yet written</td><td>Composite, covering, and secondary indexes; B-trees and LSM trees; Relational modeling and normalization</td></tr>
+<tr><td>23</td><td>Query optimization</td><td>O023</td><td>Query optimization</td><td><code>topics/query-optimization/index.html</code></td><td>Planned, not yet written</td><td>Composite, covering, and secondary indexes</td></tr>
+<tr><td>24</td><td>Read replicas</td><td>O024</td><td>Read replicas</td><td><code>topics/read-replicas/index.html</code></td><td>Planned, not yet written</td><td>Read-your-writes and monotonic-read guarantees; CQRS</td></tr>
+<tr><td>25</td><td>Database migrations</td><td>O025</td><td>Database migrations</td><td><code>topics/database-migrations/index.html</code></td><td>Planned, not yet written</td><td>Online schema changes and large backfills; Migration and rollback testing</td></tr>
+<tr><td>26</td><td>Schema versioning</td><td>O026</td><td>Schema versioning</td><td><code>topics/schema-versioning/index.html</code></td><td>Planned, not yet written</td><td>Event schemas and schema registries; Online schema changes and large backfills</td></tr>
+<tr><td>27</td><td>Optimistic locking</td><td>O027</td><td>Optimistic locking</td><td><code>topics/optimistic-locking/index.html</code></td><td>Planned, not yet written</td><td>Pessimistic concurrency control; Isolation levels and transaction anomalies</td></tr>
+<tr><td>28</td><td>Distributed locks</td><td>O028</td><td>Distributed locks</td><td><code>topics/distributed-locks/index.html</code></td><td>Planned, not yet written</td><td>Pessimistic concurrency control; Leases, fencing tokens, and split brain</td></tr>
+<tr><td>29</td><td>Sharding</td><td>O029</td><td>Sharding</td><td><code>topics/sharding/index.html</code></td><td>Planned, not yet written</td><td>Consistent and rendezvous hashing; Hot keys, hot partitions, and rebalancing</td></tr>
+<tr><td>30</td><td>Partitioning</td><td>O030</td><td>Partitioning</td><td><code>topics/partitioning/index.html</code></td><td>Planned, not yet written</td><td>Consistent and rendezvous hashing; Ordering and partition keys</td></tr>
+<tr><td>31</td><td>Replication</td><td>O031</td><td>Replication</td><td><code>topics/replication/index.html</code></td><td>Planned, not yet written</td><td>Read/write quorums; Cross-region replication and write ownership; Write-ahead logs, checkpoints, and recovery; Persistent storage in Kubernetes</td></tr>
+<tr><td>32</td><td>Leader election</td><td>O032</td><td>Leader election</td><td><code>topics/leader-election/index.html</code></td><td>Planned, not yet written</td><td>Raft and Paxos concepts; Leases, fencing tokens, and split brain</td></tr>
+<tr><td>33</td><td>CAP theorem</td><td>O033</td><td>CAP theorem</td><td><code>topics/cap-theorem/index.html</code></td><td>Planned, not yet written</td><td>PACELC; Linearizable, sequential, causal, and eventual consistency</td></tr>
+<tr><td>34</td><td>Eventual consistency</td><td>O034</td><td>Eventual consistency</td><td><code>topics/eventual-consistency/index.html</code></td><td>Planned, not yet written</td><td>Linearizable, sequential, causal, and eventual consistency; CRDTs and conflict resolution; Gossip, membership, and anti-entropy</td></tr>
+<tr><td>35</td><td>Distributed transactions</td><td>O035</td><td>Distributed transactions</td><td><code>topics/distributed-transactions/index.html</code></td><td>Planned, not yet written</td><td>Two-phase commit; Transactional outbox and inbox patterns; Transactions and ACID</td></tr>
+<tr><td>36</td><td>Saga patterns</td><td>O036</td><td>Saga patterns</td><td><code>topics/saga-patterns/index.html</code></td><td>Planned, not yet written</td><td>Orchestration versus choreography; Workflow engines and durable execution; Two-phase commit</td></tr>
+<tr><td>37</td><td>Message queues</td><td>O037</td><td>Message queues</td><td><code>topics/message-queues/index.html</code></td><td>Planned, not yet written</td><td>Delivery semantics</td></tr>
+<tr><td>38</td><td>Publish/subscribe</td><td>O038</td><td>Publish/subscribe</td><td><code>topics/publish-subscribe/index.html</code></td><td>Planned, not yet written</td><td>Event notification versus event-carried state transfer</td></tr>
+<tr><td>39</td><td>Event-driven architecture</td><td>O039</td><td>Event-driven architecture</td><td><code>topics/event-driven-architecture/index.html</code></td><td>Planned, not yet written</td><td>Event notification versus event-carried state transfer; Event sourcing; Orchestration versus choreography; Synchronous versus asynchronous composition</td></tr>
+<tr><td>40</td><td>Dead-letter queues</td><td>O040</td><td>Dead-letter queues</td><td><code>topics/dead-letter-queues/index.html</code></td><td>Planned, not yet written</td><td>Poison messages, quarantine, and replay; Acknowledgements and visibility timeouts</td></tr>
+<tr><td>41</td><td>Backpressure</td><td>O041</td><td>Backpressure</td><td><code>topics/backpressure/index.html</code></td><td>Planned, not yet written</td><td>Load shedding and admission control; Little’s Law and practical queueing theory; Async I/O and scheduling</td></tr>
+<tr><td>42</td><td>Cron jobs</td><td>O042</td><td>Cron jobs</td><td><code>topics/cron-jobs/index.html</code></td><td>Planned, not yet written</td><td>Durable timers and duplicate execution</td></tr>
+<tr><td>43</td><td>SQL injection</td><td>O043</td><td>SQL injection</td><td><code>topics/sql-injection/index.html</code></td><td>Planned, not yet written</td><td>Request smuggling and insecure deserialization; Fuzz testing</td></tr>
+<tr><td>44</td><td>Cross-site scripting</td><td>O044</td><td>Cross-site scripting</td><td><code>topics/cross-site-scripting/index.html</code></td><td>Planned, not yet written</td><td>OpenID Connect and PKCE</td></tr>
+<tr><td>45</td><td>Cross-site request forgery</td><td>O045</td><td>Cross-site request forgery</td><td><code>topics/cross-site-request-forgery/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>46</td><td>Server-side request forgery</td><td>O046</td><td>Server-side request forgery</td><td><code>topics/server-side-request-forgery/index.html</code></td><td>Planned, not yet written</td><td>Forward proxies, tunnels, ingress, and egress; Workload identity; Webhook replay protection and signature verification; Request smuggling and insecure deserialization</td></tr>
+<tr><td>47</td><td>OAuth</td><td>O047</td><td>OAuth</td><td><code>topics/oauth/index.html</code></td><td>Planned, not yet written</td><td>OpenID Connect and PKCE; Authentication versus authorization</td></tr>
+<tr><td>48</td><td>JWT rotation</td><td>O048</td><td>JWT rotation</td><td><code>topics/jwt-rotation/index.html</code></td><td>Planned, not yet written</td><td>KMS, HSMs, and crypto agility; OpenID Connect and PKCE</td></tr>
+<tr><td>49</td><td>Identity and access management</td><td>O049</td><td>Identity and access management</td><td><code>topics/identity-and-access-management/index.html</code></td><td>Planned, not yet written</td><td>RBAC versus ABAC; Least privilege and separation of duties; Workload identity; Authentication versus authorization</td></tr>
+<tr><td>50</td><td>TLS</td><td>O050</td><td>TLS</td><td><code>topics/tls/index.html</code></td><td>Planned, not yet written</td><td>Certificate authorities, PKI, and mutual TLS; Connection establishment, keep-alive, and draining</td></tr>
+<tr><td>51</td><td>Encryption at rest</td><td>O051</td><td>Encryption at rest</td><td><code>topics/encryption-at-rest/index.html</code></td><td>Planned, not yet written</td><td>Envelope encryption; KMS, HSMs, and crypto agility</td></tr>
+<tr><td>52</td><td>Encryption in transit</td><td>O052</td><td>Encryption in transit</td><td><code>topics/encryption-in-transit/index.html</code></td><td>Planned, not yet written</td><td>Certificate authorities, PKI, and mutual TLS</td></tr>
+<tr><td>53</td><td>Web application firewalls</td><td>O053</td><td>Web application firewalls</td><td><code>topics/web-application-firewalls/index.html</code></td><td>Planned, not yet written</td><td>Request smuggling and insecure deserialization</td></tr>
+<tr><td>54</td><td>DDoS protection</td><td>O054</td><td>DDoS protection</td><td><code>topics/ddos-protection/index.html</code></td><td>Planned, not yet written</td><td>NAT, firewalls, routing, anycast, and BGP fundamentals</td></tr>
+<tr><td>55</td><td>WebSockets</td><td>O055</td><td>WebSockets</td><td><code>topics/websockets/index.html</code></td><td>Planned, not yet written</td><td>Connection establishment, keep-alive, and draining</td></tr>
+<tr><td>56</td><td>Server-Sent Events</td><td>O056</td><td>Server-Sent Events</td><td><code>topics/server-sent-events/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>57</td><td>Long polling</td><td>O057</td><td>Long polling</td><td><code>topics/long-polling/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>58</td><td>gRPC</td><td>O058</td><td>gRPC</td><td><code>topics/grpc/index.html</code></td><td>Planned, not yet written</td><td>Protocol Buffers compatibility; Deadlines and cancellation propagation; Service mesh architecture and trade-offs</td></tr>
+<tr><td>59</td><td>HTTP/2 and HTTP/3</td><td>O059</td><td>HTTP/2 and HTTP/3</td><td><code>topics/http-2-and-http-3/index.html</code></td><td>Planned, not yet written</td><td>Congestion control and head-of-line blocking</td></tr>
+<tr><td>60</td><td>TCP versus UDP</td><td>O060</td><td>TCP versus UDP</td><td><code>topics/tcp-versus-udp/index.html</code></td><td>Planned, not yet written</td><td>Connection establishment, keep-alive, and draining; Congestion control and head-of-line blocking</td></tr>
+<tr><td>61</td><td>DNS</td><td>O061</td><td>DNS</td><td><code>topics/dns/index.html</code></td><td>Planned, not yet written</td><td>NAT, firewalls, routing, anycast, and BGP fundamentals; Regional traffic steering</td></tr>
+<tr><td>62</td><td>Docker</td><td>O062</td><td>Docker</td><td><code>topics/docker/index.html</code></td><td>Planned, not yet written</td><td>Container image layers and multi-stage builds</td></tr>
+<tr><td>63</td><td>Kubernetes</td><td>O063</td><td>Kubernetes</td><td><code>topics/kubernetes/index.html</code></td><td>Planned, not yet written</td><td>Kubernetes controllers and reconciliation; Kubernetes requests, limits, QoS, and disruption budgets</td></tr>
+<tr><td>64</td><td>Helm charts</td><td>O064</td><td>Helm charts</td><td><code>topics/helm-charts/index.html</code></td><td>Planned, not yet written</td><td>GitOps</td></tr>
+<tr><td>65</td><td>Service discovery</td><td>O065</td><td>Service discovery</td><td><code>topics/service-discovery/index.html</code></td><td>Planned, not yet written</td><td>Gossip, membership, and anti-entropy; Service mesh architecture and trade-offs</td></tr>
+<tr><td>66</td><td>CI/CD</td><td>O066</td><td>CI/CD</td><td><code>topics/ci-cd/index.html</code></td><td>Planned, not yet written</td><td>Artifact promotion and environment parity</td></tr>
+<tr><td>67</td><td>Build caching</td><td>O067</td><td>Build caching</td><td><code>topics/build-caching/index.html</code></td><td>Planned, not yet written</td><td>Container image layers and multi-stage builds; Reproducible and hermetic builds</td></tr>
+<tr><td>68</td><td>Infrastructure as code</td><td>O068</td><td>Infrastructure as code</td><td><code>topics/infrastructure-as-code/index.html</code></td><td>Planned, not yet written</td><td>GitOps; Policy as code and admission control</td></tr>
+<tr><td>69</td><td>Terraform</td><td>O069</td><td>Terraform</td><td><code>topics/terraform/index.html</code></td><td>Planned, not yet written</td><td>GitOps</td></tr>
+<tr><td>70</td><td>Feature flags</td><td>O070</td><td>Feature flags</td><td><code>topics/feature-flags/index.html</code></td><td>Planned, not yet written</td><td>Safe defaults, kill switches, and operational guardrails; Branch by abstraction; Graceful degradation and brownouts</td></tr>
+<tr><td>71</td><td>Blue-green deployments</td><td>O071</td><td>Blue-green deployments</td><td><code>topics/blue-green-deployments/index.html</code></td><td>Planned, not yet written</td><td>Artifact promotion and environment parity</td></tr>
+<tr><td>72</td><td>Canary releases</td><td>O072</td><td>Canary releases</td><td><code>topics/canary-releases/index.html</code></td><td>Planned, not yet written</td><td>Progressive delivery and automated canary analysis; Blast-radius containment</td></tr>
+<tr><td>73</td><td>Rolling deployments</td><td>O073</td><td>Rolling deployments</td><td><code>topics/rolling-deployments/index.html</code></td><td>Planned, not yet written</td><td>Graceful shutdown and connection draining</td></tr>
+<tr><td>74</td><td>Rollbacks and roll-forwards</td><td>O074</td><td>Rollbacks and roll-forwards</td><td><code>topics/rollbacks-and-roll-forwards/index.html</code></td><td>Planned, not yet written</td><td>Migration and rollback testing</td></tr>
+<tr><td>75</td><td>Health checks</td><td>O075</td><td>Health checks</td><td><code>topics/health-checks/index.html</code></td><td>Planned, not yet written</td><td>Graceful shutdown and connection draining</td></tr>
+<tr><td>76</td><td>Liveness and readiness probes</td><td>O076</td><td>Liveness and readiness probes</td><td><code>topics/liveness-and-readiness-probes/index.html</code></td><td>Planned, not yet written</td><td>Graceful shutdown and connection draining; Kubernetes requests, limits, QoS, and disruption budgets</td></tr>
+<tr><td>77</td><td>Dependency management and dependency hell</td><td>O077</td><td>Dependency management and dependency hell</td><td><code>topics/dependency-management-and-dependency-hell/index.html</code></td><td>Planned, not yet written</td><td>Supply-chain security, SBOMs, and provenance; Dependency governance</td></tr>
+<tr><td>78</td><td>API versioning</td><td>O078</td><td>API versioning</td><td><code>topics/api-versioning/index.html</code></td><td>Planned, not yet written</td><td>Compatibility, deprecation, and sunset policies</td></tr>
+<tr><td>79</td><td>Semantic versioning</td><td>O079</td><td>Semantic versioning</td><td><code>topics/semantic-versioning/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>80</td><td>Garbage collection</td><td>O080</td><td>Garbage collection</td><td><code>topics/garbage-collection/index.html</code></td><td>Planned, not yet written</td><td>CPU, heap, lock-contention, and I/O profiling</td></tr>
+<tr><td>81</td><td>Thread safety</td><td>O081</td><td>Thread safety</td><td><code>topics/thread-safety/index.html</code></td><td>Planned, not yet written</td><td>Atomicity, visibility, and memory ordering; Processes, threads, coroutines, and event loops</td></tr>
+<tr><td>82</td><td>Autoscaling</td><td>O082</td><td>Autoscaling</td><td><code>topics/autoscaling/index.html</code></td><td>Planned, not yet written</td><td>Capacity commitments and elasticity; Regional evacuation and capacity reservation; Load, stress, spike, and soak testing; Kubernetes requests, limits, QoS, and disruption budgets</td></tr>
+<tr><td>83</td><td>Horizontal scaling</td><td>O083</td><td>Horizontal scaling</td><td><code>topics/horizontal-scaling/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>84</td><td>Vertical scaling</td><td>O084</td><td>Vertical scaling</td><td><code>topics/vertical-scaling/index.html</code></td><td>Planned, not yet written</td><td>Capacity commitments and elasticity</td></tr>
+<tr><td>85</td><td>CDNs</td><td>O085</td><td>CDNs</td><td><code>topics/cdns/index.html</code></td><td>Planned, not yet written</td><td>Origin shielding and CDN request collapsing; HTTP caching and conditional requests; Blob and object storage</td></tr>
+<tr><td>86</td><td>Edge caching</td><td>O086</td><td>Edge caching</td><td><code>topics/edge-caching/index.html</code></td><td>Planned, not yet written</td><td>Origin shielding and CDN request collapsing; HTTP caching and conditional requests</td></tr>
+<tr><td>87</td><td>Cost optimization</td><td>O087</td><td>Cost optimization</td><td><code>topics/cost-optimization/index.html</code></td><td>Planned, not yet written</td><td>Total cost of ownership; Capacity commitments and elasticity; Cloud unit economics; Cost per request, tenant, and workload</td></tr>
+<tr><td>88</td><td>Cold starts</td><td>O088</td><td>Cold starts</td><td><code>topics/cold-starts/index.html</code></td><td>Planned, not yet written</td><td>None</td></tr>
+<tr><td>89</td><td>Serverless limits</td><td>O089</td><td>Serverless limits</td><td><code>topics/serverless-limits/index.html</code></td><td>Planned, not yet written</td><td>Total cost of ownership</td></tr>
+<tr><td>90</td><td>Latency</td><td>O090</td><td>Latency</td><td><a href="topics/latency/index.html">latency</a></td><td>Written and validated</td><td>Latency budgets and critical-path analysis</td></tr>
+<tr><td>91</td><td>Throughput</td><td>O091</td><td>Throughput</td><td><a href="topics/throughput/index.html">throughput</a></td><td>Written and validated</td><td>Concurrency, utilization, saturation, and bottlenecks; Little’s Law and practical queueing theory; Back-of-the-envelope capacity estimation</td></tr>
+<tr><td>92</td><td>P99 latency</td><td>O092</td><td>P99 latency</td><td><a href="topics/p99-latency/index.html">p99-latency</a></td><td>Written and validated</td><td>Metric cardinality and histogram design; Benchmark design and coordinated omission</td></tr>
+<tr><td>93</td><td>Tail latency</td><td>O093</td><td>Tail latency</td><td><a href="topics/tail-latency/index.html">tail-latency</a></td><td>Written and validated</td><td>Latency budgets and critical-path analysis; Benchmark design and coordinated omission; Packet loss, jitter, retransmission, and MTU problems</td></tr>
+<tr><td>94</td><td>Network partitions</td><td>O094</td><td>Network partitions</td><td><code>topics/network-partitions/index.html</code></td><td>Planned, not yet written</td><td>Leases, fencing tokens, and split brain; Partial failure and failure detection</td></tr>
+<tr><td>95</td><td>Clock skew</td><td>O095</td><td>Clock skew</td><td><code>topics/clock-skew/index.html</code></td><td>Planned, not yet written</td><td>Lamport clocks; Hybrid logical clocks; Leases, fencing tokens, and split brain; Watermarks and late-arriving events</td></tr>
+<tr><td>96</td><td>Multi-region deployments</td><td>O096</td><td>Multi-region deployments</td><td><code>topics/multi-region-deployments/index.html</code></td><td>Planned, not yet written</td><td>Active-passive versus active-active architecture; Cross-region replication and write ownership; Regional traffic steering; Data residency and sovereignty; Regions, availability zones, and failure domains</td></tr>
+<tr><td>97</td><td>Failover and failback</td><td>O097</td><td>Failover and failback</td><td><code>topics/failover-and-failback/index.html</code></td><td>Planned, not yet written</td><td>Regional evacuation and capacity reservation; Leases, fencing tokens, and split brain; Active-passive versus active-active architecture</td></tr>
+<tr><td>98</td><td>Backups and restoration</td><td>O098</td><td>Backups and restoration</td><td><code>topics/backups-and-restoration/index.html</code></td><td>Planned, not yet written</td><td>Immutable backups and cyber recovery; Restore verification; RTO and RPO; Persistent storage in Kubernetes</td></tr>
+<tr><td>99</td><td>Disaster recovery</td><td>O099</td><td>Disaster recovery</td><td><code>topics/disaster-recovery/index.html</code></td><td>Planned, not yet written</td><td>Disaster-recovery exercises; RTO and RPO</td></tr>
+<tr><td>100</td><td>Chaos engineering</td><td>O100</td><td>Chaos engineering</td><td><code>topics/chaos-engineering/index.html</code></td><td>Planned, not yet written</td><td>Fault-injection testing; Disaster-recovery exercises; Failure-mode and effects analysis</td></tr>
+<tr><td>101</td><td>Logging</td><td>O101</td><td>Logging</td><td><code>topics/logging/index.html</code></td><td>Planned, not yet written</td><td>Structured logging and correlation identifiers</td></tr>
+<tr><td>102</td><td>Monitoring</td><td>O102</td><td>Monitoring</td><td><code>topics/monitoring/index.html</code></td><td>Planned, not yet written</td><td>Golden Signals, RED, and USE methods</td></tr>
+<tr><td>103</td><td>Distributed tracing</td><td>O103</td><td>Distributed tracing</td><td><code>topics/distributed-tracing/index.html</code></td><td>Planned, not yet written</td><td>Trace sampling and context propagation; OpenTelemetry and telemetry pipelines</td></tr>
+<tr><td>104</td><td>Metrics</td><td>O104</td><td>Metrics</td><td><code>topics/metrics/index.html</code></td><td>Planned, not yet written</td><td>Metric cardinality and histogram design; Golden Signals, RED, and USE methods</td></tr>
+<tr><td>105</td><td>Alerts</td><td>O105</td><td>Alerts</td><td><code>topics/alerts/index.html</code></td><td>Planned, not yet written</td><td>Alert fatigue and symptom-based alerting; Multi-window burn-rate alerts</td></tr>
+<tr><td>106</td><td>Observability</td><td>O106</td><td>Observability</td><td><code>topics/observability/index.html</code></td><td>Planned, not yet written</td><td>OpenTelemetry and telemetry pipelines</td></tr>
+<tr><td>107</td><td>SLAs, SLOs, and SLIs</td><td>O107</td><td>SLAs, SLOs, and SLIs</td><td><code>topics/slas-slos-and-slis/index.html</code></td><td>Planned, not yet written</td><td>Multi-window burn-rate alerts; Availability and reliability mathematics; Functional and non-functional requirements; Production-readiness reviews</td></tr>
+<tr><td>108</td><td>Error budgets</td><td>O108</td><td>Error budgets</td><td><code>topics/error-budgets/index.html</code></td><td>Planned, not yet written</td><td>Multi-window burn-rate alerts; Failure-budget and risk calculations; Progressive delivery and automated canary analysis</td></tr>
+<tr><td>109</td><td>Production incidents</td><td>O109</td><td>Production incidents</td><td><code>topics/production-incidents/index.html</code></td><td>Planned, not yet written</td><td>Incident command and incident communication</td></tr>
+<tr><td>110</td><td>On-call engineering</td><td>O110</td><td>On-call engineering</td><td><code>topics/on-call-engineering/index.html</code></td><td>Planned, not yet written</td><td>Sustainable on-call rotations; Runbook design and operational ownership; Incident command and incident communication</td></tr>
+<tr><td>111</td><td>Postmortems</td><td>O111</td><td>Postmortems</td><td><code>topics/postmortems/index.html</code></td><td>Planned, not yet written</td><td>Measuring architecture outcomes; Incident command and incident communication</td></tr>
+</tbody></table></div>
+<h2 id="additional">Additional topics (215)</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">No.</th><th scope="col">Title</th><th scope="col">ID</th><th scope="col">Domain</th><th scope="col">Page</th><th scope="col">Coverage</th></tr></thead><tbody>
+<tr><td>1</td><td>Functional and non-functional requirements</td><td>A001</td><td>A</td><td><a href="topics/functional-and-non-functional-requirements/index.html">functional-and-non-functional-requirements</a></td><td>Written and validated</td></tr>
+<tr><td>2</td><td>Constraints, assumptions, and architecture drivers</td><td>A002</td><td>A</td><td><a href="topics/constraints-assumptions-and-architecture-drivers/index.html">constraints-assumptions-and-architecture-drivers</a></td><td>Written and validated</td></tr>
+<tr><td>3</td><td>Workload characterization and traffic modeling</td><td>A003</td><td>A</td><td><a href="topics/workload-characterization-and-traffic-modeling/index.html">workload-characterization-and-traffic-modeling</a></td><td>Written and validated</td></tr>
+<tr><td>4</td><td>Back-of-the-envelope capacity estimation</td><td>A004</td><td>A</td><td><a href="topics/back-of-the-envelope-capacity-estimation/index.html">back-of-the-envelope-capacity-estimation</a></td><td>Written and validated</td></tr>
+<tr><td>5</td><td>Latency budgets and critical-path analysis</td><td>A005</td><td>A</td><td><a href="topics/latency-budgets-and-critical-path-analysis/index.html">latency-budgets-and-critical-path-analysis</a></td><td>Written and validated</td></tr>
+<tr><td>6</td><td>Concurrency, utilization, saturation, and bottlenecks</td><td>A006</td><td>A</td><td><a href="topics/concurrency-utilization-saturation-and-bottlenecks/index.html">concurrency-utilization-saturation-and-bottlenecks</a></td><td>Written and validated</td></tr>
+<tr><td>7</td><td>Storage, bandwidth, memory, and IOPS calculations</td><td>A007</td><td>A</td><td><code>topics/storage-bandwidth-memory-and-iops-calculations/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>8</td><td>Little’s Law and practical queueing theory</td><td>A008</td><td>A</td><td><code>topics/littles-law-and-practical-queueing-theory/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>9</td><td>Availability and reliability mathematics</td><td>A009</td><td>A</td><td><code>topics/availability-and-reliability-mathematics/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>10</td><td>Failure-budget and risk calculations</td><td>A010</td><td>A</td><td><code>topics/failure-budget-and-risk-calculations/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>11</td><td>Architecture fitness functions</td><td>A011</td><td>A</td><td><code>topics/architecture-fitness-functions/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>12</td><td>Decision criteria and trade-off matrices</td><td>A012</td><td>A</td><td><code>topics/decision-criteria-and-trade-off-matrices/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>13</td><td>Architecture decision records</td><td>A013</td><td>A</td><td><code>topics/architecture-decision-records/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>14</td><td>Reversible versus irreversible decisions</td><td>A014</td><td>A</td><td><code>topics/reversible-versus-irreversible-decisions/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>15</td><td>Processes, threads, coroutines, and event loops</td><td>A015</td><td>B</td><td><code>topics/processes-threads-coroutines-and-event-loops/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>16</td><td>Blocking versus non-blocking I/O</td><td>A016</td><td>B</td><td><code>topics/blocking-versus-non-blocking-i-o/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>17</td><td>Async I/O and scheduling</td><td>A017</td><td>B</td><td><code>topics/async-i-o-and-scheduling/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>18</td><td>Atomicity, visibility, and memory ordering</td><td>A018</td><td>B</td><td><code>topics/atomicity-visibility-and-memory-ordering/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>19</td><td>Livelock, starvation, and lock-free programming</td><td>A019</td><td>B</td><td><code>topics/livelock-starvation-and-lock-free-programming/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>20</td><td>CPU caches, locality, false sharing, and NUMA</td><td>A020</td><td>B</td><td><code>topics/cpu-caches-locality-false-sharing-and-numa/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>21</td><td>File descriptors, sockets, and resource limits</td><td>A021</td><td>B</td><td><code>topics/file-descriptors-sockets-and-resource-limits/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>22</td><td>System calls and context switching</td><td>A022</td><td>B</td><td><code>topics/system-calls-and-context-switching/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>23</td><td>Serialization, compression, and zero-copy</td><td>A023</td><td>B</td><td><code>topics/serialization-compression-and-zero-copy/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>24</td><td>CPU, heap, lock-contention, and I/O profiling</td><td>A024</td><td>B</td><td><code>topics/cpu-heap-lock-contention-and-i-o-profiling/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>25</td><td>HTTP semantics, methods, status codes, and headers</td><td>A025</td><td>C</td><td><code>topics/http-semantics-methods-status-codes-and-headers/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>26</td><td>HTTP caching and conditional requests</td><td>A026</td><td>C</td><td><code>topics/http-caching-and-conditional-requests/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>27</td><td>Connection establishment, keep-alive, and draining</td><td>A027</td><td>C</td><td><code>topics/connection-establishment-keep-alive-and-draining/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>28</td><td>Congestion control and head-of-line blocking</td><td>A028</td><td>C</td><td><code>topics/congestion-control-and-head-of-line-blocking/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>29</td><td>NAT, firewalls, routing, anycast, and BGP fundamentals</td><td>A029</td><td>C</td><td><code>topics/nat-firewalls-routing-anycast-and-bgp-fundamentals/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>30</td><td>Packet loss, jitter, retransmission, and MTU problems</td><td>A030</td><td>C</td><td><code>topics/packet-loss-jitter-retransmission-and-mtu-problems/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>31</td><td>Certificate authorities, PKI, and mutual TLS</td><td>A031</td><td>C</td><td><code>topics/certificate-authorities-pki-and-mutual-tls/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>32</td><td>Forward proxies, tunnels, ingress, and egress</td><td>A032</td><td>C</td><td><code>topics/forward-proxies-tunnels-ingress-and-egress/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>33</td><td>L4 versus L7 load balancing</td><td>A033</td><td>C</td><td><code>topics/l4-versus-l7-load-balancing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>34</td><td>Origin shielding and CDN request collapsing</td><td>A034</td><td>C</td><td><code>topics/origin-shielding-and-cdn-request-collapsing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>35</td><td>REST resource modeling</td><td>A035</td><td>D</td><td><code>topics/rest-resource-modeling/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>36</td><td>Pagination: offset, cursor, and keyset</td><td>A036</td><td>D</td><td><code>topics/pagination-offset-cursor-and-keyset/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>37</td><td>Filtering, sorting, sparse fields, and bulk operations</td><td>A037</td><td>D</td><td><code>topics/filtering-sorting-sparse-fields-and-bulk-operations/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>38</td><td>API error models and partial success</td><td>A038</td><td>D</td><td><code>topics/api-error-models-and-partial-success/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>39</td><td>Deadlines and cancellation propagation</td><td>A039</td><td>D</td><td><code>topics/deadlines-and-cancellation-propagation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>40</td><td>Long-running operation APIs</td><td>A040</td><td>D</td><td><code>topics/long-running-operation-apis/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>41</td><td>Consumer-driven contract testing</td><td>A041</td><td>D</td><td><code>topics/consumer-driven-contract-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>42</td><td>Compatibility, deprecation, and sunset policies</td><td>A042</td><td>D</td><td><code>topics/compatibility-deprecation-and-sunset-policies/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>43</td><td>Backend-for-frontend architecture</td><td>A043</td><td>D</td><td><code>topics/backend-for-frontend-architecture/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>44</td><td>GraphQL federation and query-complexity controls</td><td>A044</td><td>D</td><td><code>topics/graphql-federation-and-query-complexity-controls/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>45</td><td>Protocol Buffers compatibility</td><td>A045</td><td>D</td><td><code>topics/protocol-buffers-compatibility/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>46</td><td>Webhook replay protection and signature verification</td><td>A046</td><td>D</td><td><code>topics/webhook-replay-protection-and-signature-verification/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>47</td><td>Relational modeling and normalization</td><td>A047</td><td>E</td><td><code>topics/relational-modeling-and-normalization/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>48</td><td>Denormalization and materialized views</td><td>A048</td><td>E</td><td><code>topics/denormalization-and-materialized-views/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>49</td><td>Access-pattern-driven NoSQL modeling</td><td>A049</td><td>E</td><td><code>topics/access-pattern-driven-nosql-modeling/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>50</td><td>Transactions and ACID</td><td>A050</td><td>E</td><td><code>topics/transactions-and-acid/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>51</td><td>Isolation levels and transaction anomalies</td><td>A051</td><td>E</td><td><code>topics/isolation-levels-and-transaction-anomalies/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>52</td><td>MVCC and serializability</td><td>A052</td><td>E</td><td><code>topics/mvcc-and-serializability/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>53</td><td>Pessimistic concurrency control</td><td>A053</td><td>E</td><td><code>topics/pessimistic-concurrency-control/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>54</td><td>B-trees and LSM trees</td><td>A054</td><td>E</td><td><code>topics/b-trees-and-lsm-trees/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>55</td><td>Write-ahead logs, checkpoints, and recovery</td><td>A055</td><td>E</td><td><code>topics/write-ahead-logs-checkpoints-and-recovery/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>56</td><td>Buffer pools, pages, and storage layout</td><td>A056</td><td>E</td><td><code>topics/buffer-pools-pages-and-storage-layout/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>57</td><td>Compaction and read/write amplification</td><td>A057</td><td>E</td><td><code>topics/compaction-and-read-write-amplification/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>58</td><td>Composite, covering, and secondary indexes</td><td>A058</td><td>E</td><td><code>topics/composite-covering-and-secondary-indexes/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>59</td><td>Consistent and rendezvous hashing</td><td>A059</td><td>E</td><td><code>topics/consistent-and-rendezvous-hashing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>60</td><td>Hot keys, hot partitions, and rebalancing</td><td>A060</td><td>E</td><td><code>topics/hot-keys-hot-partitions-and-rebalancing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>61</td><td>Online schema changes and large backfills</td><td>A061</td><td>E</td><td><code>topics/online-schema-changes-and-large-backfills/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>62</td><td>Change data capture</td><td>A062</td><td>E</td><td><code>topics/change-data-capture/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>63</td><td>Search and inverted indexes</td><td>A063</td><td>E</td><td><code>topics/search-and-inverted-indexes/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>64</td><td>Time-series databases</td><td>A064</td><td>E</td><td><code>topics/time-series-databases/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>65</td><td>Graph databases</td><td>A065</td><td>E</td><td><code>topics/graph-databases/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>66</td><td>Vector databases and approximate-nearest-neighbor indexes</td><td>A066</td><td>E</td><td><code>topics/vector-databases-and-approximate-nearest-neighbor-indexes/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>67</td><td>Columnar and analytical storage</td><td>A067</td><td>E</td><td><code>topics/columnar-and-analytical-storage/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>68</td><td>Blob and object storage</td><td>A068</td><td>E</td><td><code>topics/blob-and-object-storage/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>69</td><td>Polyglot persistence and data ownership</td><td>A069</td><td>E</td><td><code>topics/polyglot-persistence-and-data-ownership/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>70</td><td>Partial failure and failure detection</td><td>A070</td><td>F</td><td><code>topics/partial-failure-and-failure-detection/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>71</td><td>PACELC</td><td>A071</td><td>F</td><td><code>topics/pacelc/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>72</td><td>Linearizable, sequential, causal, and eventual consistency</td><td>A072</td><td>F</td><td><code>topics/linearizable-sequential-causal-and-eventual-consistency/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>73</td><td>Read-your-writes and monotonic-read guarantees</td><td>A073</td><td>F</td><td><code>topics/read-your-writes-and-monotonic-read-guarantees/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>74</td><td>Read/write quorums</td><td>A074</td><td>F</td><td><code>topics/read-write-quorums/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>75</td><td>Tunable consistency</td><td>A075</td><td>F</td><td><code>topics/tunable-consistency/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>76</td><td>Raft and Paxos concepts</td><td>A076</td><td>F</td><td><code>topics/raft-and-paxos-concepts/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>77</td><td>Consensus safety and liveness</td><td>A077</td><td>F</td><td><code>topics/consensus-safety-and-liveness/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>78</td><td>Leases, fencing tokens, and split brain</td><td>A078</td><td>F</td><td><code>topics/leases-fencing-tokens-and-split-brain/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>79</td><td>Lamport clocks</td><td>A079</td><td>F</td><td><code>topics/lamport-clocks/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>80</td><td>Vector clocks and version vectors</td><td>A080</td><td>F</td><td><code>topics/vector-clocks-and-version-vectors/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>81</td><td>Hybrid logical clocks</td><td>A081</td><td>F</td><td><code>topics/hybrid-logical-clocks/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>82</td><td>CRDTs and conflict resolution</td><td>A082</td><td>F</td><td><code>topics/crdts-and-conflict-resolution/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>83</td><td>Gossip, membership, and anti-entropy</td><td>A083</td><td>F</td><td><code>topics/gossip-membership-and-anti-entropy/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>84</td><td>Two-phase commit</td><td>A084</td><td>F</td><td><code>topics/two-phase-commit/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>85</td><td>Atomic commit and blocking failure modes</td><td>A085</td><td>F</td><td><code>topics/atomic-commit-and-blocking-failure-modes/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>86</td><td>Exactly-once claims versus end-to-end effects</td><td>A086</td><td>F</td><td><code>topics/exactly-once-claims-versus-end-to-end-effects/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>87</td><td>Invariant-first distributed-system design</td><td>A087</td><td>F</td><td><code>topics/invariant-first-distributed-system-design/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>88</td><td>Delivery semantics</td><td>A088</td><td>G</td><td><code>topics/delivery-semantics/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>89</td><td>Ordering and partition keys</td><td>A089</td><td>G</td><td><code>topics/ordering-and-partition-keys/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>90</td><td>Consumer groups and parallel processing</td><td>A090</td><td>G</td><td><code>topics/consumer-groups-and-parallel-processing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>91</td><td>Acknowledgements and visibility timeouts</td><td>A091</td><td>G</td><td><code>topics/acknowledgements-and-visibility-timeouts/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>92</td><td>Poison messages, quarantine, and replay</td><td>A092</td><td>G</td><td><code>topics/poison-messages-quarantine-and-replay/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>93</td><td>Transactional outbox and inbox patterns</td><td>A093</td><td>G</td><td><code>topics/transactional-outbox-and-inbox-patterns/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>94</td><td>Dual-write failure and reconciliation</td><td>A094</td><td>G</td><td><code>topics/dual-write-failure-and-reconciliation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>95</td><td>Event schemas and schema registries</td><td>A095</td><td>G</td><td><code>topics/event-schemas-and-schema-registries/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>96</td><td>Event notification versus event-carried state transfer</td><td>A096</td><td>G</td><td><code>topics/event-notification-versus-event-carried-state-transfer/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>97</td><td>Event sourcing</td><td>A097</td><td>G</td><td><code>topics/event-sourcing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>98</td><td>CQRS</td><td>A098</td><td>G</td><td><code>topics/cqrs/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>99</td><td>Stream-processing windows</td><td>A099</td><td>G</td><td><code>topics/stream-processing-windows/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>100</td><td>Watermarks and late-arriving events</td><td>A100</td><td>G</td><td><code>topics/watermarks-and-late-arriving-events/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>101</td><td>Durable timers and duplicate execution</td><td>A101</td><td>G</td><td><code>topics/durable-timers-and-duplicate-execution/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>102</td><td>Workflow engines and durable execution</td><td>A102</td><td>G</td><td><code>topics/workflow-engines-and-durable-execution/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>103</td><td>Orchestration versus choreography</td><td>A103</td><td>G</td><td><code>topics/orchestration-versus-choreography/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>104</td><td>Cache stampedes and request coalescing</td><td>A104</td><td>H</td><td><code>topics/cache-stampedes-and-request-coalescing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>105</td><td>Cache admission and eviction algorithms</td><td>A105</td><td>H</td><td><code>topics/cache-admission-and-eviction-algorithms/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>106</td><td>Probabilistic data structures</td><td>A106</td><td>H</td><td><code>topics/probabilistic-data-structures/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>107</td><td>Batching, pipelining, and parallelism</td><td>A107</td><td>H</td><td><code>topics/batching-pipelining-and-parallelism/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>108</td><td>Load, stress, spike, and soak testing</td><td>A108</td><td>H</td><td><code>topics/load-stress-spike-and-soak-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>109</td><td>Benchmark design and coordinated omission</td><td>A109</td><td>H</td><td><code>topics/benchmark-design-and-coordinated-omission/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>110</td><td>Retry budgets</td><td>A110</td><td>H</td><td><code>topics/retry-budgets/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>111</td><td>Bulkheads and isolation pools</td><td>A111</td><td>H</td><td><code>topics/bulkheads-and-isolation-pools/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>112</td><td>Load shedding and admission control</td><td>A112</td><td>H</td><td><code>topics/load-shedding-and-admission-control/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>113</td><td>Graceful degradation and brownouts</td><td>A113</td><td>H</td><td><code>topics/graceful-degradation-and-brownouts/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>114</td><td>Graceful shutdown and connection draining</td><td>A114</td><td>H</td><td><code>topics/graceful-shutdown-and-connection-draining/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>115</td><td>Blast-radius containment</td><td>A115</td><td>H</td><td><code>topics/blast-radius-containment/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>116</td><td>Single points of failure and correlated failure</td><td>A116</td><td>H</td><td><code>topics/single-points-of-failure-and-correlated-failure/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>117</td><td>Safe defaults, kill switches, and operational guardrails</td><td>A117</td><td>H</td><td><code>topics/safe-defaults-kill-switches-and-operational-guardrails/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>118</td><td>Failure-mode and effects analysis</td><td>A118</td><td>H</td><td><code>topics/failure-mode-and-effects-analysis/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>119</td><td>Structured logging and correlation identifiers</td><td>A119</td><td>I</td><td><code>topics/structured-logging-and-correlation-identifiers/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>120</td><td>Metric cardinality and histogram design</td><td>A120</td><td>I</td><td><code>topics/metric-cardinality-and-histogram-design/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>121</td><td>Trace sampling and context propagation</td><td>A121</td><td>I</td><td><code>topics/trace-sampling-and-context-propagation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>122</td><td>OpenTelemetry and telemetry pipelines</td><td>A122</td><td>I</td><td><code>topics/opentelemetry-and-telemetry-pipelines/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>123</td><td>Golden Signals, RED, and USE methods</td><td>A123</td><td>I</td><td><code>topics/golden-signals-red-and-use-methods/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>124</td><td>Multi-window burn-rate alerts</td><td>A124</td><td>I</td><td><code>topics/multi-window-burn-rate-alerts/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>125</td><td>Alert fatigue and symptom-based alerting</td><td>A125</td><td>I</td><td><code>topics/alert-fatigue-and-symptom-based-alerting/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>126</td><td>Incident command and incident communication</td><td>A126</td><td>I</td><td><code>topics/incident-command-and-incident-communication/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>127</td><td>Production-readiness reviews</td><td>A127</td><td>I</td><td><code>topics/production-readiness-reviews/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>128</td><td>Runbook design and operational ownership</td><td>A128</td><td>I</td><td><code>topics/runbook-design-and-operational-ownership/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>129</td><td>Sustainable on-call rotations</td><td>A129</td><td>I</td><td><code>topics/sustainable-on-call-rotations/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>130</td><td>Threat modeling and abuse cases</td><td>A130</td><td>J</td><td><code>topics/threat-modeling-and-abuse-cases/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>131</td><td>Authentication versus authorization</td><td>A131</td><td>J</td><td><code>topics/authentication-versus-authorization/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>132</td><td>OpenID Connect and PKCE</td><td>A132</td><td>J</td><td><code>topics/openid-connect-and-pkce/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>133</td><td>RBAC versus ABAC</td><td>A133</td><td>J</td><td><code>topics/rbac-versus-abac/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>134</td><td>Least privilege and separation of duties</td><td>A134</td><td>J</td><td><code>topics/least-privilege-and-separation-of-duties/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>135</td><td>Workload identity</td><td>A135</td><td>J</td><td><code>topics/workload-identity/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>136</td><td>Envelope encryption</td><td>A136</td><td>J</td><td><code>topics/envelope-encryption/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>137</td><td>KMS, HSMs, and crypto agility</td><td>A137</td><td>J</td><td><code>topics/kms-hsms-and-crypto-agility/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>138</td><td>Request smuggling and insecure deserialization</td><td>A138</td><td>J</td><td><code>topics/request-smuggling-and-insecure-deserialization/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>139</td><td>Tenant isolation and noisy-neighbor controls</td><td>A139</td><td>J</td><td><code>topics/tenant-isolation-and-noisy-neighbor-controls/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>140</td><td>Supply-chain security, SBOMs, and provenance</td><td>A140</td><td>J</td><td><code>topics/supply-chain-security-sboms-and-provenance/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>141</td><td>Audit logs and tamper evidence</td><td>A141</td><td>J</td><td><code>topics/audit-logs-and-tamper-evidence/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>142</td><td>Data classification, retention, and deletion</td><td>A142</td><td>J</td><td><code>topics/data-classification-retention-and-deletion/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>143</td><td>Data residency and sovereignty</td><td>A143</td><td>J</td><td><code>topics/data-residency-and-sovereignty/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>144</td><td>Privacy-by-design</td><td>A144</td><td>J</td><td><code>topics/privacy-by-design/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>145</td><td>Security incident containment</td><td>A145</td><td>J</td><td><code>topics/security-incident-containment/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>146</td><td>Container image layers and multi-stage builds</td><td>A146</td><td>K</td><td><code>topics/container-image-layers-and-multi-stage-builds/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>147</td><td>Reproducible and hermetic builds</td><td>A147</td><td>K</td><td><code>topics/reproducible-and-hermetic-builds/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>148</td><td>Kubernetes controllers and reconciliation</td><td>A148</td><td>K</td><td><code>topics/kubernetes-controllers-and-reconciliation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>149</td><td>Kubernetes requests, limits, QoS, and disruption budgets</td><td>A149</td><td>K</td><td><code>topics/kubernetes-requests-limits-qos-and-disruption-budgets/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>150</td><td>Persistent storage in Kubernetes</td><td>A150</td><td>K</td><td><code>topics/persistent-storage-in-kubernetes/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>151</td><td>GitOps</td><td>A151</td><td>K</td><td><code>topics/gitops/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>152</td><td>Policy as code and admission control</td><td>A152</td><td>K</td><td><code>topics/policy-as-code-and-admission-control/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>153</td><td>Service mesh architecture and trade-offs</td><td>A153</td><td>K</td><td><code>topics/service-mesh-architecture-and-trade-offs/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>154</td><td>Artifact promotion and environment parity</td><td>A154</td><td>K</td><td><code>topics/artifact-promotion-and-environment-parity/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>155</td><td>Progressive delivery and automated canary analysis</td><td>A155</td><td>K</td><td><code>topics/progressive-delivery-and-automated-canary-analysis/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>156</td><td>Platform engineering and paved roads</td><td>A156</td><td>K</td><td><code>topics/platform-engineering-and-paved-roads/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>157</td><td>Developer experience as a platform concern</td><td>A157</td><td>K</td><td><code>topics/developer-experience-as-a-platform-concern/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>158</td><td>Regions, availability zones, and failure domains</td><td>A158</td><td>L</td><td><code>topics/regions-availability-zones-and-failure-domains/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>159</td><td>Active-passive versus active-active architecture</td><td>A159</td><td>L</td><td><code>topics/active-passive-versus-active-active-architecture/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>160</td><td>Regional traffic steering</td><td>A160</td><td>L</td><td><code>topics/regional-traffic-steering/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>161</td><td>Cross-region replication and write ownership</td><td>A161</td><td>L</td><td><code>topics/cross-region-replication-and-write-ownership/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>162</td><td>RTO and RPO</td><td>A162</td><td>L</td><td><code>topics/rto-and-rpo/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>163</td><td>Business-impact analysis</td><td>A163</td><td>L</td><td><code>topics/business-impact-analysis/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>164</td><td>Immutable backups and cyber recovery</td><td>A164</td><td>L</td><td><code>topics/immutable-backups-and-cyber-recovery/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>165</td><td>Restore verification</td><td>A165</td><td>L</td><td><code>topics/restore-verification/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>166</td><td>Regional evacuation and capacity reservation</td><td>A166</td><td>L</td><td><code>topics/regional-evacuation-and-capacity-reservation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>167</td><td>Control-plane versus data-plane survivability</td><td>A167</td><td>L</td><td><code>topics/control-plane-versus-data-plane-survivability/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>168</td><td>Cell-based architecture</td><td>A168</td><td>L</td><td><code>topics/cell-based-architecture/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>169</td><td>Disaster-recovery exercises</td><td>A169</td><td>L</td><td><code>topics/disaster-recovery-exercises/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>170</td><td>Cohesion, coupling, modularity, and information hiding</td><td>A170</td><td>M</td><td><code>topics/cohesion-coupling-modularity-and-information-hiding/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>171</td><td>Modular monoliths</td><td>A171</td><td>M</td><td><code>topics/modular-monoliths/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>172</td><td>Microservice boundaries and service sizing</td><td>A172</td><td>M</td><td><code>topics/microservice-boundaries-and-service-sizing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>173</td><td>Hexagonal and ports-and-adapters architecture</td><td>A173</td><td>M</td><td><code>topics/hexagonal-and-ports-and-adapters-architecture/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>174</td><td>Domain-driven design and bounded contexts</td><td>A174</td><td>M</td><td><code>topics/domain-driven-design-and-bounded-contexts/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>175</td><td>Synchronous versus asynchronous composition</td><td>A175</td><td>M</td><td><code>topics/synchronous-versus-asynchronous-composition/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>176</td><td>Strangler migrations</td><td>A176</td><td>M</td><td><code>topics/strangler-migrations/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>177</td><td>Branch by abstraction</td><td>A177</td><td>M</td><td><code>topics/branch-by-abstraction/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>178</td><td>Dual reads, dual writes, and migration reconciliation</td><td>A178</td><td>M</td><td><code>topics/dual-reads-dual-writes-and-migration-reconciliation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>179</td><td>Anti-corruption layers</td><td>A179</td><td>M</td><td><code>topics/anti-corruption-layers/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>180</td><td>Multi-tenancy architecture models</td><td>A180</td><td>M</td><td><code>topics/multi-tenancy-architecture-models/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>181</td><td>Control-plane and data-plane separation</td><td>A181</td><td>M</td><td><code>topics/control-plane-and-data-plane-separation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>182</td><td>Evolutionary architecture</td><td>A182</td><td>M</td><td><code>topics/evolutionary-architecture/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>183</td><td>Technical-debt portfolio management</td><td>A183</td><td>M</td><td><code>topics/technical-debt-portfolio-management/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>184</td><td>Build versus buy versus managed services</td><td>A184</td><td>M</td><td><code>topics/build-versus-buy-versus-managed-services/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>185</td><td>Test portfolios and confidence boundaries</td><td>A185</td><td>N</td><td><code>topics/test-portfolios-and-confidence-boundaries/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>186</td><td>Unit, integration, component, and end-to-end testing</td><td>A186</td><td>N</td><td><code>topics/unit-integration-component-and-end-to-end-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>187</td><td>Contract and compatibility testing</td><td>A187</td><td>N</td><td><code>topics/contract-and-compatibility-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>188</td><td>Property-based testing</td><td>A188</td><td>N</td><td><code>topics/property-based-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>189</td><td>Fuzz testing</td><td>A189</td><td>N</td><td><code>topics/fuzz-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>190</td><td>Invariant testing</td><td>A190</td><td>N</td><td><code>topics/invariant-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>191</td><td>Deterministic distributed-system simulation</td><td>A191</td><td>N</td><td><code>topics/deterministic-distributed-system-simulation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>192</td><td>Concurrency and race testing</td><td>A192</td><td>N</td><td><code>topics/concurrency-and-race-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>193</td><td>Fault-injection testing</td><td>A193</td><td>N</td><td><code>topics/fault-injection-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>194</td><td>Shadow traffic and traffic replay</td><td>A194</td><td>N</td><td><code>topics/shadow-traffic-and-traffic-replay/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>195</td><td>Differential testing</td><td>A195</td><td>N</td><td><code>topics/differential-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>196</td><td>Migration and rollback testing</td><td>A196</td><td>N</td><td><code>topics/migration-and-rollback-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>197</td><td>Restore and disaster-recovery testing</td><td>A197</td><td>N</td><td><code>topics/restore-and-disaster-recovery-testing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>198</td><td>Formal methods and model checking</td><td>A198</td><td>N</td><td><code>topics/formal-methods-and-model-checking/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>199</td><td>Production verification</td><td>A199</td><td>N</td><td><code>topics/production-verification/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>200</td><td>Cloud unit economics</td><td>A200</td><td>O</td><td><code>topics/cloud-unit-economics/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>201</td><td>Cost per request, tenant, and workload</td><td>A201</td><td>O</td><td><code>topics/cost-per-request-tenant-and-workload/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>202</td><td>Total cost of ownership</td><td>A202</td><td>O</td><td><code>topics/total-cost-of-ownership/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>203</td><td>Operational burden and opportunity cost</td><td>A203</td><td>O</td><td><code>topics/operational-burden-and-opportunity-cost/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>204</td><td>Capacity commitments and elasticity</td><td>A204</td><td>O</td><td><code>topics/capacity-commitments-and-elasticity/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>205</td><td>Architecture narratives and review documents</td><td>A205</td><td>O</td><td><code>topics/architecture-narratives-and-review-documents/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>206</td><td>Executive communication</td><td>A206</td><td>O</td><td><code>topics/executive-communication/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>207</td><td>Cross-team contracts and ownership boundaries</td><td>A207</td><td>O</td><td><code>topics/cross-team-contracts-and-ownership-boundaries/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>208</td><td>Dependency governance</td><td>A208</td><td>O</td><td><code>topics/dependency-governance/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>209</td><td>Technical strategy and sequencing</td><td>A209</td><td>O</td><td><code>topics/technical-strategy-and-sequencing/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>210</td><td>Migration economics</td><td>A210</td><td>O</td><td><code>topics/migration-economics/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>211</td><td>Standardization versus autonomy</td><td>A211</td><td>O</td><td><code>topics/standardization-versus-autonomy/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>212</td><td>Risk management and compliance evidence</td><td>A212</td><td>O</td><td><code>topics/risk-management-and-compliance-evidence/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>213</td><td>Decision facilitation, dissent, and escalation</td><td>A213</td><td>O</td><td><code>topics/decision-facilitation-dissent-and-escalation/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>214</td><td>Mentoring architecture reasoning</td><td>A214</td><td>O</td><td><code>topics/mentoring-architecture-reasoning/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>215</td><td>Measuring architecture outcomes</td><td>A215</td><td>O</td><td><code>topics/measuring-architecture-outcomes/index.html</code></td><td>Planned, not yet written</td></tr>
+</tbody></table></div>
+<h2 id="systems">System dissections (32)</h2>
+<div class="table-wrap"><table><thead><tr><th scope="col">ID</th><th scope="col">Title</th><th scope="col">Page</th><th scope="col">Coverage</th></tr></thead><tbody>
+<tr><td>S01</td><td>URL shortener / Bitly</td><td><code>systems-dissect/url-shortener/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S02</td><td>Cloud file storage / Dropbox</td><td><code>systems-dissect/cloud-file-storage/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S03</td><td>Local delivery service</td><td><code>systems-dissect/local-delivery-service/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S04</td><td>Ticket booking / Ticketmaster</td><td><code>systems-dissect/ticket-booking/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S05</td><td>Social news feed</td><td><code>systems-dissect/social-news-feed/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S06</td><td>Dating and matching service / Tinder</td><td><code>systems-dissect/dating-matching-service/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S07</td><td>Online judge / LeetCode</td><td><code>systems-dissect/online-judge/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S08</td><td>Messaging platform / WhatsApp</td><td><code>systems-dissect/messaging-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S09</td><td>Distributed rate limiter</td><td><code>systems-dissect/distributed-rate-limiter/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S10</td><td>Video platform / YouTube</td><td><code>systems-dissect/video-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S11</td><td>Live comments</td><td><code>systems-dissect/live-comments/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S12</td><td>Top-K video analytics</td><td><code>systems-dissect/top-k-video-analytics/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S13</td><td>Ride-sharing platform / Uber</td><td><code>systems-dissect/ride-sharing-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S14</td><td>Distributed web crawler</td><td><code>systems-dissect/distributed-web-crawler/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S15</td><td>Advertisement click aggregator</td><td><code>systems-dissect/ad-click-aggregator/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S16</td><td>Social-post search</td><td><code>systems-dissect/social-post-search/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S17</td><td>Local business discovery / Yelp</td><td><code>systems-dissect/local-business-discovery/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S18</td><td>Photo-sharing platform / Instagram</td><td><code>systems-dissect/photo-sharing-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S19</td><td>Fitness activity platform / Strava</td><td><code>systems-dissect/fitness-activity-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S20</td><td>Distributed cache</td><td><code>systems-dissect/distributed-cache/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S21</td><td>Online auction</td><td><code>systems-dissect/online-auction/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S22</td><td>Distributed job scheduler</td><td><code>systems-dissect/distributed-job-scheduler/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S23</td><td>News aggregator</td><td><code>systems-dissect/news-aggregator/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S24</td><td>Price-tracking service</td><td><code>systems-dissect/price-tracking-service/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S25</td><td>Notification system</td><td><code>systems-dissect/notification-system/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S26</td><td>Retail brokerage platform / Robinhood</td><td><code>systems-dissect/retail-brokerage-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S27</td><td>Collaborative document editor / Google Docs</td><td><code>systems-dissect/collaborative-document-editor/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S28</td><td>Payment system</td><td><code>systems-dissect/payment-system/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S29</td><td>Metrics-monitoring platform</td><td><code>systems-dissect/metrics-monitoring-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S30</td><td>Online chess platform</td><td><code>systems-dissect/online-chess-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S31</td><td>LLM conversational platform / ChatGPT</td><td><code>systems-dissect/llm-conversational-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+<tr><td>S32</td><td>Flash-sale platform</td><td><code>systems-dissect/flash-sale-platform/index.html</code></td><td>Planned, not yet written</td></tr>
+</tbody></table></div></main>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

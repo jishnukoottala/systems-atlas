@@ -1,0 +1,17 @@
+---
+title: "Context: fan-out request across replicated shards"
+---
+flowchart LR
+    C["Client"] -->|"HTTPS, 500 ms deadline"| CO["Coordinator: owns hedge policy"]
+    subgraph s1["Shard 1: owns index partition"]
+      R1A["Replica A"]
+      R1B["Replica B"]
+    end
+    subgraph s2["Shard 2: owns index partition"]
+      R2A["Replica A: slow, merging"]
+      R2B["Replica B"]
+    end
+    CO -->|"gRPC"| R1A
+    CO -->|"gRPC"| R2A
+    CO -.->|"hedge after 50 ms"| R2B
+    CO -.->|"cancel"| R2A

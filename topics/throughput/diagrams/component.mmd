@@ -1,0 +1,14 @@
+---
+title: "Component view of the simulator and scalability model"
+---
+flowchart LR
+    subgraph py["Python: goodput simulation"]
+      AR["Seeded arrivals"] --> Q["FIFO queue: optional limit"]
+      Q --> W["Worker heap: 10 workers"]
+      W --> R["Throughput, goodput, rejected"]
+      Q -->|"queue is full"| REJ["Rejected early"]
+    end
+    subgraph ts["TypeScript: scaling model"]
+      S["Load test samples: workers, rps"] --> FIT["Least-squares USL fit"]
+      FIT --> PK["Peak concurrency and predictions"]
+    end

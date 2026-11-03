@@ -1,0 +1,11 @@
+---
+title: "Context: path of a request from client to data and its latency contributors"
+---
+flowchart LR
+    U["User device"] -->|"last mile: variable, 1 to 3 RTT setup"| E["Edge node: TLS terminates here"]
+    subgraph private["Private network: operator-owned"]
+      E -->|"backbone: reused connections"| LB["Origin load balancer"]
+      LB -->|"HTTP, under 1 ms"| S["Service: queueing, CPU, GC"]
+      S -->|"under 1 ms"| C["Cache: owns copies"]
+      S -->|"1 to 10 ms"| D["Database: owns data, disk, locks"]
+    end

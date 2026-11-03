@@ -1,0 +1,15 @@
+---
+title: "Sequence: eliciting a requirement during a design review"
+---
+sequenceDiagram
+    participant E as Engineer
+    participant P as Product owner
+    participant R as Requirements record
+    participant M as Monitoring
+    E->>P: Which journey must survive a zone failure?
+    P-->>E: Payment and order confirmation only
+    E->>P: Proposal: 99.99 percent costs about 3x. 99.95 percent costs 1.3x
+    P-->>E: Accept 99.95 percent. Revenue loss does not justify 3x
+    E->>R: Record target, window, load, owner, and rationale
+    R->>M: Create the SLI and SLO from the record
+    M-->>R: Report compliance every 28 days

@@ -1,0 +1,22 @@
+---
+title: "Context: where latency is measured and aggregated"
+---
+flowchart LR
+    subgraph client["Client devices: outside operator control"]
+      U["Browser or app: real-user timing"]
+    end
+    subgraph op["Operator network"]
+      LB["Load balancer: sees all outcomes"]
+      A1["Server 1: owns its histogram"]
+      A2["Server N: owns its histogram"]
+      M["Metrics store: merges counts by bucket"]
+      D["Dashboards and SLO alerts"]
+    end
+    U -->|"HTTPS"| LB
+    LB --> A1
+    LB --> A2
+    A1 -->|"scrape: bucket counts"| M
+    A2 -->|"scrape: bucket counts"| M
+    LB -->|"export: bucket counts"| M
+    U -->|"beacon: sampled timings"| M
+    M --> D

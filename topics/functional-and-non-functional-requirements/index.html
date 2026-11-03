@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Functional and non-functional requirements | Systems Atlas</title>
+<meta name="description" content="A functional requirement states what a system must do: an observable behavior, for a named actor, under stated conditions. A non-functional requirement, more pr">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="A001">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Functional and non-functional requirements</h1>
+<p class="meta-line">A001 · Foundational · about 1.3 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>A functional requirement states what a system must do: an observable behavior, for a named actor, under stated conditions. A non-functional requirement, more precisely a quality requirement, states how well the system must do it, as a measurable target over a defined window and load.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Functional requirements determine which features exist. Quality requirements determine the architecture. A note-taking app at 100 requests per second with 99% availability and a note-taking app at 1,000,000 requests per second with 99.99% availability have the same features and almost nothing else in common. Most expensive design errors come from quality requirements that were never stated, stated without a number, or invented by the engineer because nobody asked the business. Principal engineers are valued for finding those gaps before they turn into a rebuild.</p>
+<h3 id="prerequisites">Prerequisites</h3><p>None</p><h3 id="study-time">Study time</h3><p>About 1.3 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p><a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a>, Decision criteria and trade-off matrices <span class="muted">(not yet written)</span>, SLAs, SLOs, and SLIs <span class="muted">(not yet written)</span></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Distinguish a behavior from a quality attribute, and split statements that mix the two.</li><li>Rewrite a vague statement as a falsifiable one with metric, target, window, and load condition.</li><li>Rank quality attributes and find which of them are architecture drivers.</li><li>Run requirement elicitation in a 45-minute design interview without stalling.</li><li>Connect each quality requirement to the evidence that will show whether it holds in production.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A retailer asks for a &quot;fast, highly available checkout&quot; before a seasonal sale. Today it handles 150 orders per second at peak, and the sale forecast is 2,000. Two teams interpret the request. Team A targets 99.99% availability across all of checkout, including recommendations and the loyalty widget, and proposes an active-active multi-region rebuild costing about nine engineer-years. Team B asks the question Team A skipped: what has to stay available? The answer is narrow. A customer must be able to pay and receive an order confirmation. Recommendations may vanish. Loyalty points may post 30 minutes late. Inventory counts may be stale for 60 seconds on browse pages, but never at the commit step.</p>
+<p>The final requirement reads: &quot;<code>POST /orders</code> returns a final result with p99 server latency at or below 300 ms and at least 99.95% success, measured over 28 days and at up to 2,000 orders per second, excluding client-caused 4xx responses.&quot; Team B's design isolates that one path and costs a fraction of the rebuild. The features did not change. The sentence did, and the sentence chose the architecture.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Think of commissioning a bridge. Functional requirements say that it connects two banks and carries cars and pedestrians. Quality requirements say it carries 40-tonne trucks, stays open in 120 km/h wind, and lasts 75 years. Two bridges meeting the first list can differ tenfold in cost, because of the second list.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>A bridge has stable loads and physics that do not change after opening. Software load can grow 100-fold in a year, and quality requirements change as the business changes. A bridge also fails as a unit, while software fails partially: a system may be up for one tenant and down for another. So software requirements need to be scoped by user journey, and they must be revisited on a schedule. Treating them as a one-time contract is where the analogy misleads.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> stakeholders, actors, user journeys, requirements, constraints, measurements.</li><li><strong>State:</strong> a requirement moves through proposed, agreed, verified, and retired or renegotiated.</li><li><strong>Flow:</strong> stakeholder intent becomes a stated requirement, which becomes a design driver, then a test or service-level indicator, then evidence.</li><li><strong>Invariant 1:</strong> every quality requirement has evidence that could prove it false.</li><li><strong>Invariant 2:</strong> every requirement has one accountable owner who can agree to changing it.</li><li><strong>Invariant 3:</strong> evidence from below the required load is not evidence.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th><th scope="col">Example</th></tr></thead><tbody><tr><td>Functional requirement</td><td>Observable behavior</td><td>A rider can cancel a trip before pickup</td></tr><tr><td>Quality attribute</td><td>A property judged by degree</td><td>Latency, availability, durability, operability</td></tr><tr><td>Constraint</td><td>A non-negotiable limit on the solution space</td><td>Must run in the EU; team of six; launch by March</td></tr><tr><td>Assumption</td><td>Believed to be true, unverified</td><td>Reads outnumber writes 50 to 1</td></tr><tr><td>Architecture driver</td><td>A requirement that, if changed, changes the structure</td><td>RPO of zero forces synchronous replication</td></tr><tr><td>Scenario</td><td>Stimulus, environment, response, and measure</td><td>At 2,000 rps with one zone lost, p99 stays under 500 ms</td></tr></tbody></table></div>
+<p>The term &quot;non-functional&quot; is misleading, since these requirements are often the main reason a system exists. A payment system that loses a ledger entry fails its purpose. <a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a> extends this vocabulary to constraints and drivers.</p>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>Any computation has a behavior and a resource envelope. Behavior can be checked on one machine with one request. The envelope cannot: latency under load, survival of a failure, and durability across years only exist at scale or over time. Features usually compose: adding a feature rarely breaks another. Qualities interact: stronger consistency tends to raise latency, replication raises cost, and more tenants worsen isolation. So quality requirements are trade-off inputs, and they need to be ranked, because they cannot all be maximized together.</p>
+<p>A statement is a requirement only if it is falsifiable. Use a five-part form: <strong>scope</strong> (which journey), <strong>metric</strong> (how it is measured and where), <strong>target</strong>, <strong>window</strong>, and <strong>condition</strong> (load and failure state). &quot;The API must be fast&quot; has none of these. &quot;p99 server-side latency of <code>GET /feed</code> is at most 200 ms over 28 days, up to 50,000 rps, with one zone lost&quot; has all five.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p>Availability targets translate directly to allowed downtime:</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Target</th><th scope="col">Downtime per 30 days</th><th scope="col">Downtime per year</th></tr></thead><tbody><tr><td>99%</td><td>7.2 hours</td><td>3.65 days</td></tr><tr><td>99.9%</td><td>43.2 minutes</td><td>8.76 hours</td></tr><tr><td>99.95%</td><td>21.6 minutes</td><td>4.38 hours</td></tr><tr><td>99.99%</td><td>4.32 minutes</td><td>52.6 minutes</td></tr></tbody></table></div>
+<p>Calculation: 30 days × 24 h × 60 min = 43,200 min, and 43,200 × 0.001 = 43.2 minutes for 99.9%. A 4.32-minute budget is shorter than most human paging and diagnosis loops, so 99.99% implies automated failover. That one number removes whole designs from consideration. Availability and reliability mathematics <span class="muted">(not yet written)</span> covers how availability composes across dependencies.</p>
+<h3 id="complexity">Complexity</h3>
+<p>Algorithmic complexity does not apply to a requirement, but elicitation has its own scaling. If n quality attributes interact pairwise, there are n(n−1)/2 potential conflicts: 8 attributes give 28 pairs. This is why ranking attributes beats trying to analyze every pair. The example linter below runs in O(r) time and space for r requirements.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>Identify actors and the top three to five journeys. Name who does what.</li><li>Write functional requirements as &quot;actor can action object&quot;, and mark in-scope and out-of-scope items.</li><li>For each critical journey, ask about scale, latency, availability, durability, consistency, security, compliance, and cost.</li><li>Convert each answer to the five-part form. Where the business has no number, propose one and record it as an assumption.</li><li>Rank the attributes and name the top three as drivers. Ask directly: &quot;If we can only have two, which two?&quot;</li><li>Attach evidence to each one: a test before launch, and a service-level indicator after it.</li><li>Review on a schedule and whenever load or business context changes materially.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-lifecycle"><figcaption>Lifecycle of a quality requirement, from proposal to retirement</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A requirement starts proposed, becomes agreed once an owner accepts it, verified when evidence confirms it, and violated when measurement fails. A violated requirement is either fixed, returning to verified, or renegotiated, returning to proposed. Requirements end as retired.">stateDiagram-v2
+    [*] --&gt; Proposed: engineer or stakeholder drafts it
+    Proposed --&gt; Agreed: named owner accepts target and cost
+    Agreed --&gt; Verified: pre-launch test or SLI confirms it
+    Verified --&gt; Violated: measurement misses target
+    Violated --&gt; Verified: system fixed
+    Violated --&gt; Proposed: target renegotiated
+    Verified --&gt; Proposed: business context changes
+    Verified --&gt; Retired: journey removed
+    Retired --&gt; [*]</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A requirement starts proposed, becomes agreed once an owner accepts it, verified when evidence confirms it, and violated when measurement fails. A violated requirement is either fixed, returning to verified, or renegotiated, returning to proposed. Requirements end as retired.</p></figure>
+<p>A violated requirement has two legitimate exits, and teams commonly forget the second. If a target is missed for a quarter and no one funds a fix, the honest action is renegotiation. Leaving the target in place makes it fiction, and fictional targets train people to ignore all targets.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Requirements have concurrency too. Several teams can change assumptions that a shared requirement depends on, such as a marketing team adding push notifications that double peak read load. Without a single owner and a change process, two teams will each believe they are within budget while jointly exceeding it. Treat shared capacity and error budgets as shared mutable state with an owner, and review changes against it.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Order matters during elicitation: scope first, then quality targets, then design. Designing before ranking qualities tends to anchor the group on the first idea. Requirements also need to be consistent with each other. &quot;RPO of zero&quot; and &quot;p99 write latency under 10 ms across regions 80 ms apart&quot; contradict each other: a cross-region synchronous acknowledgment costs at least one round trip of about 80 ms. Check for such contradictions using physics and arithmetic before debating solutions.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>The product or business owner owns the value of a target and the cost they are willing to pay. Engineering owns feasibility and the cost estimate. SRE or the owning service team owns the measurement. Security and legal own compliance constraints. An engineer can propose a number, but only the accountable owner can accept the risk. Record this in the requirement and in an Architecture decision records <span class="muted">(not yet written)</span> when it shapes architecture.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: who supplies requirements and who consumes them</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Business owners, customers, regulators, and operators feed the requirements record. The record feeds architecture design, tests, and service-level monitoring, whose production evidence returns to the record.">flowchart LR
+    subgraph sources[&quot;Stakeholders: own risk&quot;]
+      B[&quot;Business owner: value, cost limit&quot;]
+      C[&quot;Customers: journeys&quot;]
+      R[&quot;Regulators and legal: constraints&quot;]
+      O[&quot;Operators: on-call limits&quot;]
+    end
+    REQ[&quot;Requirements record (versioned in Git, owned per journey)&quot;]
+    B --&gt; REQ
+    C --&gt; REQ
+    R --&gt; REQ
+    O --&gt; REQ
+    REQ --&gt;|&quot;ranked drivers&quot;| D[&quot;Architecture design and ADRs&quot;]
+    REQ --&gt;|&quot;acceptance scenarios&quot;| T[&quot;Load and failure tests&quot;]
+    REQ --&gt;|&quot;SLI and SLO definitions&quot;| M[&quot;Production monitoring&quot;]
+    M --&gt;|&quot;measured evidence&quot;| REQ</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Business owners, customers, regulators, and operators feed the requirements record. The record feeds architecture design, tests, and service-level monitoring, whose production evidence returns to the record.</p></figure>
+<p>Requirements here are a living record with a feedback loop, and that loop is the key feature of this diagram. Without the arrow from monitoring back to the record, targets are written once and slowly become false. Each stakeholder group owns a different kind of input: engineers do not own the risk appetite.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the requirement linter and evidence checker</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Requirement authors submit JSON over HTTP to an Express linter, which validates and applies rules. A CI job calls the Python evidence checker with measurements exported from a metrics store and gets a verdict per requirement.">flowchart LR
+    A[&quot;Author or CI job&quot;] --&gt;|&quot;HTTP POST /lint, JSON&quot;| API[&quot;Express API: input validation&quot;]
+    API --&gt; L[&quot;Lint rules: missing metric, target, window, load; vague words&quot;]
+    L --&gt;|&quot;findings, pass or fail&quot;| A
+    MS[&quot;Metrics export: JSON file&quot;] --&gt;|&quot;measurements&quot;| E[&quot;Python checker: Pydantic models&quot;]
+    S[&quot;Spec file in repository&quot;] --&gt;|&quot;requirements&quot;| E
+    E --&gt;|&quot;verdict and exit code&quot;| CI[&quot;CI gate&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Requirement authors submit JSON over HTTP to an Express linter, which validates and applies rules. A CI job calls the Python evidence checker with measurements exported from a metrics store and gets a verdict per requirement.</p></figure>
+<p>The two examples guard different moments. The linter runs before design, on the words. The checker runs after measurement, on the evidence. Keeping both shows that a requirement is checked twice: is it testable, and does it hold?</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: eliciting a requirement during a design review</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. An engineer asks a product owner what must stay up during a failure. The owner names checkout. The engineer proposes a target with cost, the owner accepts a lower number, and the engineer records it and creates an SLO.">sequenceDiagram
+    participant E as Engineer
+    participant P as Product owner
+    participant R as Requirements record
+    participant M as Monitoring
+    E-&gt;&gt;P: Which journey must survive a zone failure?
+    P--&gt;&gt;E: Payment and order confirmation only
+    E-&gt;&gt;P: Proposal: 99.99 percent costs about 3x. 99.95 percent costs 1.3x
+    P--&gt;&gt;E: Accept 99.95 percent. Revenue loss does not justify 3x
+    E-&gt;&gt;R: Record target, window, load, owner, and rationale
+    R-&gt;&gt;M: Create the SLI and SLO from the record
+    M--&gt;&gt;R: Report compliance every 28 days</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. An engineer asks a product owner what must stay up during a failure. The owner names checkout. The engineer proposes a target with cost, the owner accepts a lower number, and the engineer records it and creates an SLO.</p></figure>
+<p>The important exchange is the third message: the target comes with a price. A question like &quot;how available should it be?&quot; always gets the answer &quot;very&quot;. Asking with the cost attached gets a real decision. The cost multipliers shown are illustrative: you estimate them for your own system.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: a requirement that was never stated</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. An unstated durability requirement leads to asynchronous replication being chosen. A region failure loses recent writes, the loss is discovered by customers, and the team must reconstruct data, then renegotiate the requirement and redesign.">flowchart TD
+    A[&quot;Durability never stated&quot;] --&gt; B[&quot;Team assumes async replication is acceptable&quot;]
+    B --&gt; C{&quot;Region fails with 8 s replication lag&quot;}
+    C --&gt;|&quot;failover promotes replica&quot;| D[&quot;Last 8 s of orders lost&quot;]
+    D --&gt; E[&quot;Customers report missing orders&quot;]
+    E --&gt; F[&quot;Manual reconciliation against payment provider&quot;]
+    F --&gt; G[&quot;RPO is finally stated. Architecture must change&quot;]
+    C --&gt;|&quot;lag near zero by luck&quot;| H[&quot;No visible loss, so the gap stays hidden&quot;]
+    H --&gt; C</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. An unstated durability requirement leads to asynchronous replication being chosen. A region failure loses recent writes, the loss is discovered by customers, and the team must reconstruct data, then renegotiate the requirement and redesign.</p></figure>
+<p>The failure path has a delayed trigger, which makes it dangerous. The defect is a missing sentence that may stay invisible for years, as the loop on the right shows. Its cost grows with the data accumulated, and the fix arrives under the worst conditions.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>Stated targets remove whole classes of design from consideration early, which saves more time than any other activity in design.</li><li>Falsifiable statements settle arguments, since opinions can be replaced by measurement.</li><li>Ranked drivers make cost discussions possible with non-engineers.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Elicitation takes senior time and stakeholder attention.</li><li>Numbers create accountability, and some organizations resist that.</li><li>Precise numbers can look more certain than they are, so a guess needs to stay labeled as a guess.</li><li>Maintained requirements need an owner and a review cadence.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>User stories only:</strong> good for behavior, weak on quality, so often needs quality scenarios added.</li><li><strong>Quality attribute scenarios:</strong> a richer form with stimulus, environment, and response. Best for architecture reviews.</li><li><strong>SLO-first:</strong> start from user-visible indicators. Good for running services, weaker for a new domain with no baseline.</li><li><strong>Formal specification:</strong> strongest precision and suited to narrow, high-risk protocols. See Formal methods and model checking <span class="muted">(not yet written)</span>.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>Always, at a depth proportional to the irreversibility of the decision. A storage engine or tenant-isolation model needs written, reviewed targets. An internal tool may need three sentences.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Do not run a heavy process on an experiment whose goal is to learn if anyone wants it. Write down the target you are skipping and the signal that would require revisiting it. Do not specify qualities a system cannot influence, like client network latency outside your boundary.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>Load has grown by more than three times since the last review.</li><li>A target has been missed for two consecutive windows, or exceeded by a wide margin at high cost.</li><li>A new regulation, market, or tenant class appears.</li><li>The owner of a journey changes.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<p>Requirements are the input to capacity planning, so the calculation here converts a requirement into an implied capacity and availability design.</p>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<ul><li>Peak target: 2,000 orders per second, stated in the requirement.</li><li>Fan-out: each order makes about 6 internal calls (assumption, from tracing).</li><li>Service capacity: about 400 requests per second per instance at acceptable latency (assumption, from load test).</li><li>Three availability zones, with survival of one zone loss required.</li></ul>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Internal load (requests per second) = peak orders per second × fan-out.</li><li>Instances needed = internal load ÷ safe per-instance capacity, per service tier.</li><li>Failure-adjusted instances = instances × zones ÷ (zones − 1).</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Internal load: 2,000 × 6 = 12,000 rps across the tiers involved, averaging 2,000 rps per tier if the six calls go to six tiers.</li><li>Per tier: 2,000 rps ÷ 400 rps per instance = 5 instances at exact capacity.</li><li>Error budget for 99.95% over 28 days: 40,320 min × 0.0005 = 20.2 minutes.</li><li>Failed orders allowed at peak: 2,000 × 0.0005 = 1 failed order per second at the budgeted rate.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Keep 30% headroom for forecast error and deployment churn: 5 ÷ 0.7 = 7.14, rounded up to 8 instances per tier. The figure of 30% is an illustrative default, and you should replace it with your own forecast error.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>Losing one of three zones must leave 8 instances: 8 × 3 ÷ 2 = 12 instances per tier, with 4 per zone. Check it: losing a zone leaves 8. So a single sentence, &quot;with one zone lost&quot;, raises instance count by 50%, and that cost should be shown to whoever accepts the target.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-unmeasurable-target">Unmeasurable target</h3><dl><dt>Trigger</dt><dd>A requirement says &quot;fast&quot; or &quot;highly available&quot; with no number.</dd><dt>Symptoms</dt><dd>Design debates go in circles, and every team thinks they have met it.</dd><dt>Blast radius</dt><dd>The whole project, through over-engineering or a missed launch.</dd><dt>Detection</dt><dd>Lint for missing metric, target, window, or load during review.</dd><dt>Mitigation</dt><dd>Propose a number, label it an assumption, and request sign-off by a date.</dd><dt>Recovery</dt><dd>Baseline current behavior and set the first target near it.</dd><dt>Prevention</dt><dd>Use a five-part template and block review if fields are empty.</dd></dl></div>
+<div class="failure"><h3 id="failure-availability-scoped-to-the-whole-product">Availability scoped to the whole product</h3><dl><dt>Trigger</dt><dd>One availability target covers every feature on the page.</dd><dt>Symptoms</dt><dd>Heavy cost; a recommendations outage counts as a checkout outage.</dd><dt>Blast radius</dt><dd>Budget and team capacity, and reliability of the journey that matters.</dd><dt>Detection</dt><dd>Ask what happens when each dependency is gone, and test by turning it off.</dd><dt>Mitigation</dt><dd>Split by journey and classify dependencies as critical or optional.</dd><dt>Recovery</dt><dd>Rewrite the targets per journey and degrade optional features gracefully.</dd><dt>Prevention</dt><dd>Require a scoped journey in every quality requirement.</dd></dl></div>
+<div class="failure"><h3 id="failure-contradictory-requirements">Contradictory requirements</h3><dl><dt>Trigger</dt><dd>Targets conflict, such as zero RPO with 10 ms writes across regions 80 ms apart.</dd><dt>Symptoms</dt><dd>No design satisfies review, or a design quietly violates one target.</dd><dt>Blast radius</dt><dd>Design phase delays, or latent data loss later in production.</dd><dt>Detection</dt><dd>Check each pair of top drivers with physics and arithmetic.</dd><dt>Mitigation</dt><dd>Escalate the trade-off to the owner with the options priced.</dd><dt>Recovery</dt><dd>Renegotiate the lower-ranked target and record why.</dd><dt>Prevention</dt><dd>Rank attributes and review pairs among the top drivers.</dd></dl></div>
+<div class="failure"><h3 id="failure-evidence-from-the-wrong-conditions">Evidence from the wrong conditions</h3><dl><dt>Trigger</dt><dd>A load test at 20% of peak is reported as proving the target.</dd><dt>Symptoms</dt><dd>Launch-day saturation despite a passing test report.</dd><dt>Blast radius</dt><dd>The launch and anything sharing its dependencies.</dd><dt>Detection</dt><dd>Compare test load, duration, and failure state with the requirement's conditions.</dd><dt>Mitigation</dt><dd>Mark the result inconclusive and throttle launch traffic.</dd><dt>Recovery</dt><dd>Run a test at the stated load and fix the bottlenecks it reveals.</dd><dt>Prevention</dt><dd>Encode conditions in the requirement and check them automatically.</dd></dl></div>
+<div class="failure"><h3 id="failure-requirements-decay">Requirements decay</h3><dl><dt>Trigger</dt><dd>Traffic or business context changes while targets stay the same.</dd><dt>Symptoms</dt><dd>Alerts are ignored, and engineers cannot say why a target exists.</dd><dt>Blast radius</dt><dd>Slow loss of trust across all reliability work.</dd><dt>Detection</dt><dd>Review the date on each requirement and its compliance history.</dd><dt>Mitigation</dt><dd>Hold a one-hour review with each journey owner.</dd><dt>Recovery</dt><dd>Retire or renegotiate stale targets.</dd><dt>Prevention</dt><dd>Schedule reviews at least annually and on load changes of three times or more.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Security requirements get stated as &quot;the system must be secure&quot;, which is untestable. Name the threat instead: &quot;A support agent cannot view a payment card number&quot;, or &quot;A tenant cannot read another tenant's objects, verified by an automated cross-tenant test on every release.&quot; Omitted abuse cases are the common failure: requirements describe what legitimate users do, and attackers use the same features. See Threat modeling and abuse cases <span class="muted">(not yet written)</span>.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>For each journey, state who is trusted with what: anonymous internet users, authenticated customers, internal staff, partner systems, and other services. Requirements about data crossing those boundaries are architecture drivers, as they determine encryption, tokens, and network layout.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>State them as behaviors plus quality targets: &quot;Only the account holder and support staff with an open ticket can read an order. Access decisions take at most 5 ms at p99 and fail closed.&quot; The last two words matter since they decide what happens during an authorization outage.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>For multi-tenant products, state isolation in two parts: data isolation (&quot;no cross-tenant reads, ever&quot;) and performance isolation (&quot;one tenant's burst may not raise another tenant's p99 by more than 10%&quot;). The second is commonly left out and later becomes a noisy-neighbor incident.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Requirements records can expose sensitive information like security weaknesses or unannounced business plans. Keep them access-controlled where needed. State data classification, retention, deletion time, and residency as explicit requirements, because they constrain storage and backup design. See Data classification, retention, and deletion <span class="muted">(not yet written)</span>.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Add a misuse case for each key journey: &quot;A single account cannot make more than 10 password-reset requests per hour.&quot; Put limits in the requirements so that rate limiting is designed in.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Measure the requirement itself. For the sample target, use <code>orders_requests_total{status}</code> and a latency histogram <code>orders_request_duration_seconds</code>. Also track requirement health: percentage of quality requirements with a live SLI, and requirements missed for two or more windows.</p>
+<h3 id="logs">Logs</h3>
+<p>Log the decision evidence: load test identifier, conditions, and results. Application logs should contain the journey name so failures can be grouped by requirement.</p>
+<h3 id="traces">Traces</h3>
+<p>Tag root spans with the journey, for instance <code>journey=checkout</code>. Then a per-journey latency measurement can be derived from traces, and dependencies that do not belong in a critical path become visible.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>One page per journey: the target stated in words, current compliance, remaining error budget, load compared with the condition in the requirement, and the owner's name.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Alert on budget burn in the journey, not on each cause. Raise a non-paging ticket if load exceeds the requirement's stated condition, because the evidence no longer applies.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>99.95% of <code>POST /orders</code> non-4xx responses succeed over 28 days.</li><li>99% of <code>POST /orders</code> finish in at most 300 ms over 28 days, measured at the load balancer.</li><li>100% of quality requirements for tier-1 journeys have a live SLI, checked monthly. This one is a process objective.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>If compliance is missed: identify the affected journey, compare load against the stated condition, and check whether the miss came from a change, a dependency, or growth. If growth caused it, reopen the requirement with its owner. Avoid quietly lowering a target without the owner agreeing.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>The TypeScript example is an Express service with <code>POST /lint</code>, split into <code>lint.ts</code> (pure rules) and <code>index.ts</code> (HTTP). The Python example is a command-line evidence checker, with no HTTP layer because the lesson is the evaluation itself. These two are different programs by design: they cover the &quot;is it testable?&quot; and &quot;does it hold?&quot; checks.</p>
+<h3 id="data-structures">Data structures</h3>
+<p>Both use small records: <code>Requirement</code> and <code>Finding</code> in TypeScript, and Pydantic <code>QualityRequirement</code>, <code>Measurement</code>, and <code>Result</code> in Python. Python verdicts are an explicit <code>Literal</code> union of <code>met</code>, <code>violated</code>, <code>inconclusive</code>, and <code>no-evidence</code>, since &quot;not proven&quot; and &quot;disproven&quot; need different responses.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>POST /lint</code> takes a JSON array and returns <code>{ pass, requirements, findings }</code>. <code>GET /healthz</code> returns status. The Python tool reads <code>--file spec.json</code> and uses exit codes 0, 1, and 2 so that it can gate a CI job.</p>
+<h3 id="error-handling">Error handling</h3>
+<p>Express maps <code>ValidationError</code> to 422, malformed JSON to 400, and everything else to a logged 500 that leaks no internals. Python catches missing files, bad JSON, and schema failures, and returns exit code 2, which differs from the exit code 1 for unmet requirements.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>Linting is pure and holds no shared state, so concurrent requests cannot interfere. Node handles them on one event loop, and the 256 KB body limit bounds the synchronous work per request. Python is a single-run process. The TypeScript service closes its server on <code>SIGTERM</code> to finish in-flight requests.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>The vague-word rule is a simple pattern and will miss many cases. Neither tool judges whether a target is sensible. The Python checker takes a measured value as given and does not check how a percentile was computed.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Store requirements in version control with owners, generate SLO configuration from them, pull real measurements from your metrics store, authenticate the service, and record a review date. Compute percentiles from histograms rather than averaging them.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Express service that lints requirements so vague quality claims fail early, in review.
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import type { NextFunction, Request, Response, Express } from 'express';
+import { lintRequirement, parseRequirements, ValidationError } from './lint.ts';
+
+const log = (level: string, msg: string, fields: Record&lt;string, unknown&gt; = {}): void =&gt; {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level, msg, ...fields }));
+};
+
+export function createApp(): Express {
+  const app = express();
+  app.use(express.json({ limit: '256kb' }));
+
+  app.get('/healthz', (_req: Request, res: Response) =&gt; { res.json({ status: 'ok' }); });
+
+  app.post('/lint', (req: Request, res: Response) =&gt; {
+    const requirements = parseRequirements(req.body);
+    const findings = requirements.flatMap(lintRequirement);
+    const errors = findings.filter((f) =&gt; f.severity === 'error').length;
+    log('info', 'lint.completed', { requirements: requirements.length, findings: findings.length, errors });
+    res.json({ pass: errors === 0, requirements: requirements.length, findings });
+  });
+
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) =&gt; {
+    if (err instanceof ValidationError) { res.status(422).json({ error: err.message }); return; }
+    if (err instanceof SyntaxError) { res.status(400).json({ error: 'Malformed JSON.' }); return; }
+    log('error', 'request.failed', { error: String(err) });
+    res.status(500).json({ error: 'Internal error.' });
+  });
+  return app;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const port = Number(process.env['PORT'] ?? 3000);
+  const server = createApp().listen(port, () =&gt; { log('info', 'server.started', { port }); });
+  const shutdown = (signal: string): void =&gt; {
+    log('info', 'server.stopping', { signal });
+    server.close(() =&gt; { process.exit(0); });
+  };
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Evaluate measured evidence against quality requirements and report which ones hold.
+
+Requirements are only useful if they can be checked after launch. This command-line tool models
+each requirement as a comparison over a measurement and refuses evidence gathered under less load
+than the requirement specifies, since that evidence proves nothing.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import operator
+import sys
+from pathlib import Path
+from typing import Literal
+
+from pydantic import BaseModel, Field, ValidationError
+
+log = logging.getLogger(&quot;requirements&quot;)
+
+Comparison = Literal[&quot;&lt;=&quot;, &quot;&gt;=&quot;]
+Verdict = Literal[&quot;met&quot;, &quot;violated&quot;, &quot;inconclusive&quot;, &quot;no-evidence&quot;]
+OPS = {&quot;&lt;=&quot;: operator.le, &quot;&gt;=&quot;: operator.ge}
+
+
+class QualityRequirement(BaseModel):
+    id: str
+    metric: str
+    comparison: Comparison
+    target: float
+    unit: str
+    window_days: int = Field(gt=0)
+    min_load_rps: float = Field(ge=0)
+
+
+class Measurement(BaseModel):
+    metric: str
+    value: float
+    window_days: int = Field(gt=0)
+    load_rps: float = Field(ge=0)
+
+
+class Spec(BaseModel):
+    requirements: list[QualityRequirement]
+    measurements: list[Measurement]
+
+
+class Result(BaseModel):
+    id: str
+    verdict: Verdict
+    detail: str
+
+
+def evaluate(req: QualityRequirement, measurements: list[Measurement]) -&gt; Result:
+    candidates = [m for m in measurements if m.metric == req.metric]
+    if not candidates:
+        return Result(id=req.id, verdict=&quot;no-evidence&quot;, detail=f&quot;nothing measures {req.metric}&quot;)
+    usable = [
+        m for m in candidates if m.window_days &gt;= req.window_days and m.load_rps &gt;= req.min_load_rps
+    ]
+    if not usable:
+        return Result(
+            id=req.id,
+            verdict=&quot;inconclusive&quot;,
+            detail=f&quot;evidence is below {req.min_load_rps} rps or shorter than {req.window_days} days&quot;,
+        )
+    # Judge on the worst qualifying measurement: one good run does not cancel out a bad one.
+    pick = max if req.comparison == &quot;&lt;=&quot; else min
+    worst = pick(m.value for m in usable)
+    ok = OPS[req.comparison](worst, req.target)
+    return Result(
+        id=req.id,
+        verdict=&quot;met&quot; if ok else &quot;violated&quot;,
+        detail=f&quot;worst {worst} {req.unit} against {req.comparison} {req.target} {req.unit}&quot;,
+    )
+
+
+def evaluate_all(spec: Spec) -&gt; list[Result]:
+    return [evaluate(r, spec.measurements) for r in spec.requirements]
+
+
+SAMPLE = {
+    &quot;requirements&quot;: [
+        {&quot;id&quot;: &quot;Q-LAT&quot;, &quot;metric&quot;: &quot;checkout_p99_ms&quot;, &quot;comparison&quot;: &quot;&lt;=&quot;, &quot;target&quot;: 300, &quot;unit&quot;: &quot;ms&quot;,
+         &quot;window_days&quot;: 28, &quot;min_load_rps&quot;: 2000},
+        {&quot;id&quot;: &quot;Q-AVL&quot;, &quot;metric&quot;: &quot;checkout_success_pct&quot;, &quot;comparison&quot;: &quot;&gt;=&quot;, &quot;target&quot;: 99.95, &quot;unit&quot;: &quot;%&quot;,
+         &quot;window_days&quot;: 28, &quot;min_load_rps&quot;: 0},
+        {&quot;id&quot;: &quot;Q-RPO&quot;, &quot;metric&quot;: &quot;replication_lag_s&quot;, &quot;comparison&quot;: &quot;&lt;=&quot;, &quot;target&quot;: 5, &quot;unit&quot;: &quot;s&quot;,
+         &quot;window_days&quot;: 7, &quot;min_load_rps&quot;: 0},
+    ],
+    &quot;measurements&quot;: [
+        {&quot;metric&quot;: &quot;checkout_p99_ms&quot;, &quot;value&quot;: 240, &quot;window_days&quot;: 28, &quot;load_rps&quot;: 400},
+        {&quot;metric&quot;: &quot;checkout_success_pct&quot;, &quot;value&quot;: 99.91, &quot;window_days&quot;: 28, &quot;load_rps&quot;: 1500},
+    ],
+}
+
+
+def main(argv: list[str] | None = None) -&gt; int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(&quot;--file&quot;, type=Path, help=&quot;JSON spec; uses a built-in sample when omitted&quot;)
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO, format='{&quot;level&quot;:&quot;%(levelname)s&quot;,&quot;msg&quot;:&quot;%(message)s&quot;}')
+    try:
+        raw = json.loads(args.file.read_text()) if args.file else SAMPLE
+        spec = Spec.model_validate(raw)
+    except (OSError, json.JSONDecodeError, ValidationError) as exc:
+        log.error(&quot;invalid spec: %s&quot;, type(exc).__name__)
+        print(exc, file=sys.stderr)
+        return 2
+    results = evaluate_all(spec)
+    print(json.dumps([r.model_dump() for r in results], indent=2))
+    return 0 if all(r.verdict == &quot;met&quot; for r in results) else 1
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/functional-and-non-functional-requirements/examples/typescript
+pnpm install --ignore-workspace</code></pre>
+<h3 id="run">Run</h3>
+<p>Start the linter in one terminal:</p>
+<pre class="code"><code class="language-bash">PORT=3000 pnpm start</code></pre>
+<p>In a second terminal, submit one vague and one falsifiable requirement:</p>
+<pre class="code"><code class="language-bash">curl -s localhost:3000/lint -H 'content-type: application/json' -d '[
+ {&quot;id&quot;:&quot;Q1&quot;,&quot;kind&quot;:&quot;quality&quot;,&quot;text&quot;:&quot;Checkout must be fast&quot;},
+ {&quot;id&quot;:&quot;Q2&quot;,&quot;kind&quot;:&quot;quality&quot;,&quot;text&quot;:&quot;Checkout latency&quot;,&quot;metric&quot;:&quot;p99 server latency&quot;,&quot;target&quot;:&quot;&lt;= 300 ms&quot;,&quot;window&quot;:&quot;28 days&quot;,&quot;loadCondition&quot;:&quot;up to 2000 rps&quot;}
+]' | jq '{pass, rules: [.findings[].rule]}'</code></pre>
+<p>Then run the evidence checker:</p>
+<pre class="code"><code class="language-bash">cd ../python
+uv run python -m app.main; echo &quot;exit code: $?&quot;</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>The curl command prints:</p>
+<pre class="code"><code class="language-json">{
+  &quot;pass&quot;: false,
+  &quot;rules&quot;: [&quot;missing-metric&quot;, &quot;missing-target&quot;, &quot;missing-window&quot;, &quot;missing-loadCondition&quot;, &quot;vague-word&quot;]
+}</code></pre>
+<p>The checker prints <code>inconclusive</code> for <code>Q-LAT</code>, since the test ran at 400 rps against a 2,000 rps requirement. It prints <code>violated</code> for <code>Q-AVL</code> and <code>no-evidence</code> for <code>Q-RPO</code>, then <code>exit code: 1</code>. A good-looking 240 ms measurement still does not satisfy <code>Q-LAT</code>, and that is the point of the lab.</p>
+<h3 id="cleanup">Cleanup</h3>
+<p>Stop the server with Ctrl-C. Then remove the installed dependencies if you like:</p>
+<pre class="code"><code class="language-bash">rm -rf node_modules ../python/.venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>ERR_UNKNOWN_FILE_EXTENSION &quot;.ts&quot;</code>: your Node.js is older than 23.6. Upgrade it.</li><li><code>EADDRINUSE</code>: choose another port, or find the holder with <code>lsof -i :3000</code>.</li><li><code>jq: command not found</code>: install jq, or remove the pipe.</li><li><code>requires-python</code> error: run <code>uv python install 3.12</code>.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Classify and split</h3><p>Classify each as functional, quality, or constraint, and split any that mix them: (a) &quot;Users can export invoices quickly to PDF.&quot; (b) &quot;Must run on the existing Oracle licence.&quot; (c) &quot;Search must return relevant results.&quot;</p><details class="disclosure"><summary>Hint</summary><p>Ask what a tester would need in order to fail it. Then ask whether the sentence limits the solution or describes behavior.</p></details><details class="disclosure"><summary>Solution</summary><p>(a) Mixed. Functional: &quot;An account admin can export an invoice as PDF.&quot; Quality: &quot;95% of exports finish within 5 seconds for invoices with up to 1,000 lines.&quot; (b) Constraint: it limits the solution space and isn't a behavior. Ask whether it is real and when the licence ends. (c) Functional-looking but untestable. Relevance needs a measure, like &quot;normalized discounted cumulative gain at 10 of at least 0.7 on the labeled query set.&quot;</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Calling (b) a non-functional requirement and moving on, which loses the question of whether the constraint is real. Accepting &quot;relevant&quot; because it sounds obvious.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> The passing test that proved nothing</h3><p>A team reports that their 99.9% and 200 ms target is &quot;verified&quot; using a 10-minute load test at 300 rps on a staging system with an empty database. Production traffic peaks at 4,000 rps, with a 2 TB dataset. Find every reason the evidence is weak. Then run the Python checker with a spec that represents this case, and explain the verdict.</p><details class="disclosure"><summary>Hint</summary><p>Compare conditions one at a time: load, duration, data size, topology, and failure state.</p></details><details class="disclosure"><summary>Solution</summary><p>Load is 7.5% of peak. Ten minutes cannot demonstrate a 28-day availability figure, and it misses leaks and compaction. An empty database hides index depth, cache misses, and bad query plans. Staging may differ in topology, and no failure was injected. In the checker, set <code>min_load_rps</code> to 4000 and <code>window_days</code> to 28 with a measurement of 300 rps and 1 day: the verdict is <code>inconclusive</code>. The correct report is &quot;not yet shown&quot;, which is different from pass or fail.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Treating the problem as only about load. Saying the target failed, when there simply is no evidence yet.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Price the failure condition</h3><p>A service must hold 6,000 rps at a safe 500 rps per instance, with 25% headroom. Compare the instance count (a) with no failure condition, (b) surviving one of three zones, and (c) surviving one of two zones. Then state the sentence that you would show the budget owner.</p><details class="disclosure"><summary>Hint</summary><p>Apply headroom first, then scale by zones ÷ (zones − 1).</p></details><details class="disclosure"><summary>Solution</summary><p>Base: 6,000 ÷ 500 = 12. With headroom: 12 ÷ 0.75 = 16. (a) 16 instances. (b) 16 × 3 ÷ 2 = 24. (c) 16 × 2 ÷ 1 = 32. Sentence: &quot;Surviving a zone loss raises the fleet from 16 to 24 instances, which is 50% more. Using only two zones would make that 100% more.&quot;</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Adding one instance instead of a zone's worth. Dividing 6,000 by the failure-adjusted capacity without headroom. Quoting technical numbers with no cost.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> Requirements for a ride-hailing MVP</h3><p>You have 10 minutes with a product lead to scope a ride-hailing MVP for one city with 5,000 peak concurrent drivers. Write five functional requirements, explicit non-goals, and five ranked quality requirements in five-part form. Name the top two architecture drivers.</p><details class="disclosure"><summary>Hint</summary><p>Location updates dominate writes and matching dominates contention. Ask which failure is worst: a double-assigned driver, or a slow map?</p></details><details class="disclosure"><summary>Solution</summary><p>Functional: a rider can request a trip; a rider sees an estimate before confirming; a driver receives and accepts offers; both see live location; a rider pays at trip end. Non-goals: scheduled rides, pooling, multiple cities. Quality: (1) a driver is never assigned to two active trips, checked by a continuous invariant audit; (2) p95 offer dispatch at most 2 s up to 500 requests per minute; (3) location ingest of 5,000 drivers every 4 s, so 1,250 writes per second with p99 freshness at most 8 s; (4) trip state is durable with RPO zero within a region; (5) 99.9% availability of request and accept journeys over 28 days. Drivers: assignment correctness and high-rate location ingest. These push you toward a strongly consistent assignment store and a separate store for ephemeral location.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Giving a single availability figure. Omitting non-goals. Listing ten equally important qualities, since an unranked list makes no decision.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> The target nobody owned</h3><p>At 02:00 a primary database fails. Failover loses 40 seconds of writes. The design document states &quot;high durability&quot;. Finance reports 300 payments captured with no order record. Write the immediate response steps and three follow-up actions concerning requirements.</p><details class="disclosure"><summary>Hint</summary><p>Immediate work concerns customers and data. Follow-up work concerns why 40 seconds was never judged acceptable or not.</p></details><details class="disclosure"><summary>Solution</summary><p>Immediate: declare an incident and name a commander; stop further loss if the problem is ongoing; reconcile against the payment provider's records, since it holds the truth for those 300 charges; restore or refund; tell customers and finance. Follow-up: (1) state RPO per data class, with an owner in finance signing the payments number; (2) measure replication lag as an SLI and alert when it threatens the RPO; (3) review all tier-1 data stores for unquantified durability language and test failover to confirm actual loss.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Blaming the database. Writing &quot;improve durability&quot; as the action item, which repeats the defect in new words. See Postmortems <span class="muted">(not yet written)</span>.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<ul><li><a href="https://www.iso.org/standard/72089.html" rel="noopener noreferrer">ISO/IEC/IEEE 29148, requirements engineering</a>, 2018. Characteristics of good requirements and processes. Formal standard, and access to the text is paid.</li><li><a href="https://www.iso.org/standard/78176.html" rel="noopener noreferrer">ISO/IEC 25010, product quality model</a>, 2023. A formal taxonomy of quality characteristics, useful as a completeness checklist.</li><li><a href="https://www.rfc-editor.org/rfc/rfc2119.html" rel="noopener noreferrer">RFC 2119</a>, March 1997, with <a href="https://www.rfc-editor.org/rfc/rfc8174.html" rel="noopener noreferrer">RFC 8174</a>, May 2017. These define MUST, SHOULD, and MAY in specifications. Teams often borrow them as a convention, but these are IETF documents and do not mandate this use elsewhere.</li></ul>
+<h3 id="established-practice">Established practice</h3>
+<ul><li>SLO-based targets are described in <a href="https://sre.google/sre-book/service-level-objectives/" rel="noopener noreferrer">Service Level Objectives</a>, a chapter of Google's <em>Site Reliability Engineering</em>, 2016. It is an influential published practice, not a formal standard.</li><li>The <a href="https://docs.aws.amazon.com/wellarchitected/latest/framework/welcome.html" rel="noopener noreferrer">AWS Well-Architected Framework</a>, a living document, provides review questions organized by pillar. It is vendor guidance.</li></ul>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Requirement tracking does not need specialized software for most teams. Markdown files in Git work well. Regulated industries use requirements-management tools with audit trails. SLO tracking is offered by major cloud monitoring products and observability vendors, which should be compared on how they calculate compliance windows.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Declaring SLOs as code in repositories, and generating alerts from those files, is increasingly common. <a href="https://github.com/OpenSLO/OpenSLO" rel="noopener noreferrer">OpenSLO</a> is one vendor-neutral specification effort, though adoption is uneven and it should not be regarded as an established standard. Using large language models to draft requirements and find contradictions is an emerging practice: treat output as a prompt for review, since a model cannot accept risk on an owner's behalf. These are inference from public activity, without adoption data.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>ISO/IEC 25010 was revised in 2023, adding safety as a top-level characteristic and renaming several existing characteristics. Check the current edition when citing it.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Formal standards cost money to read and suit regulated contexts more than small teams. Templates get ignored unless they block something, so tie them to a review or CI gate, and avoid applying the full process to reversible experiments.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What is the difference between functional and non-functional requirements?</summary><p><strong>Strong answer.</strong> Functional requirements describe behavior for an actor. Quality requirements describe degree: latency, availability, durability, cost, under stated load and window. Features can often be added later, whereas qualities usually determine the structure, so they deserve more attention early on.</p>
+<p><strong>Why it is asked.</strong> It checks whether you see that qualities drive architecture, and it is a lead-in to scoping.</p>
+<p><strong>Weak-answer warning signs.</strong> Reciting definitions with no consequence, or calling every quality &quot;scalability&quot;.</p>
+<p><strong>Follow-up.</strong> Give a case where changing one quality target changes the design, with no feature change.</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What makes a requirement testable?</summary><p><strong>Strong answer.</strong> It must be possible to name the evidence that would prove it false. I use scope, metric, target, window, and condition. &quot;p99 of <code>GET /feed</code> at most 200 ms over 28 days at 50,000 rps&quot; qualifies, and &quot;feed loads fast&quot; does not.</p>
+<p><strong>Why it is asked.</strong> Precision is a basic habit of senior designers.</p>
+<p><strong>Weak-answer warning signs.</strong> Giving a target with no window or load condition.</p>
+<p><strong>Follow-up.</strong> Where exactly would you measure that latency, and why does the location matter?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> How do you start a design interview?</summary><p><strong>Strong answer.</strong> I spend about five minutes confirming users, the top journeys, and non-goals, then scale and top quality targets. I state assumptions out loud, then say which two or three drivers will shape the design, and check them with the interviewer.</p>
+<p><strong>Why it is asked.</strong> Candidates who skip this solve the wrong problem.</p>
+<p><strong>Weak-answer warning signs.</strong> Drawing boxes at once, or spending 20 minutes on questions with no decisions.</p>
+<p><strong>Follow-up.</strong> The interviewer says &quot;you decide the scale&quot;. What do you do next?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you handle a stakeholder demanding &quot;five nines&quot;?</summary><p><strong>Strong answer.</strong> I translate it to about 5 minutes of downtime per year, then compare with the deployment, failover, and dependency reality. I price two or three options, and ask which journey needs it and what an outage actually costs. Usually one narrow path gets a higher target than the rest.</p>
+<p><strong>Why it is asked.</strong> Tests whether you can push back with numbers and without obstruction.</p>
+<p><strong>Weak-answer warning signs.</strong> Agreeing without pricing, or refusing without alternatives.</p>
+<p><strong>Follow-up.</strong> Their dependency only offers 99.9%. What can you promise?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Two quality targets conflict. What do you do?</summary><p><strong>Strong answer.</strong> First prove the conflict with arithmetic, such as a round-trip time against a write-latency target. Then rank them with the owner, price each resolution, and record the decision and when to revisit it. Sometimes scoping resolves it: strong durability for payments, weaker for analytics.</p>
+<p><strong>Why it is asked.</strong> Most real design work is trade-offs among qualities.</p>
+<p><strong>Weak-answer warning signs.</strong> Choosing silently, or assuming a new technology removes the conflict.</p>
+<p><strong>Follow-up.</strong> How do you record this so a new engineer understands it two years later?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you decide which requirements are architecture drivers?</summary><p><strong>Strong answer.</strong> A driver is a requirement whose change would change structure, and that is both important and hard. I look for those requiring a different data store, replication model, or topology, and I test by asking what we would build at ten times less and ten times more.</p>
+<p><strong>Why it is asked.</strong> Separating signal from a long list is a staff-level skill.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating all listed requirements as equally important.</p>
+<p><strong>Follow-up.</strong> Name a requirement that sounds important but is rarely a driver.</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you verify a quality requirement before launch?</summary><p><strong>Strong answer.</strong> I match the conditions: production-like data size, stated peak with headroom, sustained duration, and an injected failure such as a zone loss. Anything less is reported as partial evidence. After launch, the SLI takes over as the continuing evidence.</p>
+<p><strong>Why it is asked.</strong> It separates people who have launched at scale from those who have not.</p>
+<p><strong>Weak-answer warning signs.</strong> Calling a short staging test &quot;proof&quot;, or ignoring data size.</p>
+<p><strong>Follow-up.</strong> How would you verify a durability target like eleven nines?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> The product team has no idea what target to set. How do you proceed?</summary><p><strong>Strong answer.</strong> I measure the current baseline and use data on user behavior, such as abandonment at different latencies. I propose a number near the baseline, label it an assumption, and set a review date. A provisional target with an owner beats waiting for a perfect one.</p>
+<p><strong>Why it is asked.</strong> Real stakeholders rarely come with numbers.</p>
+<p><strong>Weak-answer warning signs.</strong> Waiting for product input, or copying numbers from another company.</p>
+<p><strong>Follow-up.</strong> How do you prevent a provisional number from becoming permanent?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you make requirements survive across several teams?</summary><p><strong>Strong answer.</strong> I would assign journey-level owners, keep records in version control, generate SLOs from those records, and allocate latency and error budgets to dependencies. Teams changing shared load would need to check against that budget. The process has to connect to something that blocks, such as launch review.</p>
+<p><strong>Why it is asked.</strong> It tests moving from individual to organizational mechanisms.</p>
+<p><strong>Weak-answer warning signs.</strong> Proposing a wiki page with no enforcement.</p>
+<p><strong>Follow-up.</strong> Who resolves a dispute when two teams claim the same latency budget?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> When is it right to lower a target?</summary><p><strong>Strong answer.</strong> When evidence shows users do not benefit from it, or the cost beats the value, or it has been missed for several windows with no funding to fix it. Lowering it is a decision made by the owner, which is recorded. An unfunded target is misleading, and it trains everyone to ignore targets.</p>
+<p><strong>Why it is asked.</strong> It reveals whether you view targets as business decisions.</p>
+<p><strong>Weak-answer warning signs.</strong> Believing targets may only go up, or quietly editing them.</p>
+<p><strong>Follow-up.</strong> What would you check before lowering an availability target on a paid product with an SLA?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> Your company's architecture review keeps rejecting designs late. How do you fix it through requirements?</summary><p><strong>Strong answer.</strong> Late rejection usually means drivers surfaced late. I would introduce an early, lightweight driver review of one page: top journeys, ranked qualities, irreversible decisions, and open assumptions. I would measure rework and time to decision, and reserve full review for irreversible choices. I would also build a library of tiered default targets so teams do not start from zero.</p>
+<p><strong>Why it is asked.</strong> Principals improve the decision system rather than single decisions.</p>
+<p><strong>Weak-answer warning signs.</strong> Adding more review stages or more templates, with no measure of outcome.</p>
+<p><strong>Follow-up.</strong> How do you avoid this becoming process for its own sake?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> An executive asks why reliability work costs so much when &quot;the requirement has not changed&quot;. How do you respond?</summary><p><strong>Strong answer.</strong> The sentence may not have changed, but its conditions have. Load, data, dependencies, and team count all grew, and I would show that in cost per journey at each scale. I would give options: keep the target at this cost, lower it for a stated business exposure, or narrow the scope. Then the executive makes a risk decision instead of receiving a technical explanation.</p>
+<p><strong>Why it is asked.</strong> It tests executive communication and making risk decisions visible. See Executive communication <span class="muted">(not yet written)</span>.</p>
+<p><strong>Weak-answer warning signs.</strong> Defending with jargon, or treating cost questions as an attack.</p>
+<p><strong>Follow-up.</strong> The executive selects the cheapest option. What do you do if you disagree?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Features decide what exists, and qualities decide the structure.</li><li>A quality requirement needs scope, metric, target, window, and condition.</li><li>Rank qualities: an unranked list decides nothing.</li><li>Present targets with their cost, so the owner can make a real decision.</li><li>Evidence gathered below the stated conditions is &quot;not proven&quot;, not &quot;passed&quot;.</li><li>A target that is missed and unfunded should be renegotiated in the open.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Have I named actors, top journeys, and non-goals?</li><li>Is each quality target scoped to a journey?</li><li>Have I checked the top drivers against each other with arithmetic?</li><li>Is every guess labeled as an assumption with a review date?</li><li>Does a named owner accept each target and its cost?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Each tier-1 journey has an SLI and an SLO generated from the requirement.</li><li>Load tests matched the stated load, data size, duration, and failure condition.</li><li>Failure capacity for the stated failure has been provisioned.</li><li>Data retention, deletion, and residency are stated and implemented.</li><li>A review date and an owner are recorded.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Architecture driver:</strong> a requirement whose change would change the structure.</li><li><strong>Constraint:</strong> a fixed limit on the solution space.</li><li><strong>Falsifiable:</strong> capable of being proven false by evidence.</li><li><strong>Journey:</strong> an end-to-end task that matters to a user.</li><li><strong>RPO:</strong> recovery point objective, the maximum acceptable data loss measured in time. See RTO and RPO <span class="muted">(not yet written)</span>.</li><li><strong>SLI and SLO:</strong> a service-level indicator is a measurement, and an objective is its target. See SLAs, SLOs, and SLIs <span class="muted">(not yet written)</span>.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="2"><fieldset><legend>1. Which statement is a complete quality requirement?</legend><label><input type="radio" name="quiz-0" value="0"> The API must have low latency under heavy load.</label><label><input type="radio" name="quiz-0" value="1"> p99 latency should be 200 ms.</label><label><input type="radio" name="quiz-0" value="2"> p99 server latency of <code>GET /feed</code> is at most 200 ms over 28 days at up to 50,000 rps.</label><label><input type="radio" name="quiz-0" value="3"> <code>GET /feed</code> returns the user's newest posts.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> p99 server latency of <code>GET /feed</code> is at most 200 ms over 28 days at up to 50,000 rps..</p><p>The third has scope, metric, target, window, and condition. The second lacks scope, window, and load, and the fourth is functional.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. A load test at 400 rps shows 240 ms against a 300 ms target that applies at 2,000 rps. What is the verdict?</legend><label><input type="radio" name="quiz-1" value="0"> Met, since 240 is below 300.</label><label><input type="radio" name="quiz-1" value="1"> Violated, since load was too low.</label><label><input type="radio" name="quiz-1" value="2"> Inconclusive, because the evidence was not gathered under the stated condition.</label><label><input type="radio" name="quiz-1" value="3"> Met, if extrapolated linearly.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Inconclusive, because the evidence was not gathered under the stated condition..</p><p>Latency is typically non-linear as utilization rises, so low-load results neither prove nor disprove the target at the higher load.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>3. How much downtime does 99.99% allow in 30 days?</legend><label><input type="radio" name="quiz-2" value="0"> 43.2 minutes</label><label><input type="radio" name="quiz-2" value="1"> 21.6 minutes</label><label><input type="radio" name="quiz-2" value="2"> 4.32 minutes</label><label><input type="radio" name="quiz-2" value="3"> 26 seconds</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 4.32 minutes.</p><p>43,200 minutes × 0.0001 = 4.32 minutes, too short for most human-driven recovery. So this target implies automated failover.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>4. Why is &quot;must run in the EU&quot; different from a quality requirement?</legend><label><input type="radio" name="quiz-3" value="0"> It is not important.</label><label><input type="radio" name="quiz-3" value="1"> It is a functional requirement.</label><label><input type="radio" name="quiz-3" value="2"> It is a constraint: it limits the solution space and is not judged by degree.</label><label><input type="radio" name="quiz-3" value="3"> It can always be negotiated.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> It is a constraint: it limits the solution space and is not judged by degree..</p><p>A constraint narrows options rather than measuring behavior. It may still be questioned, but only with its owner.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>5. A service needs 16 instances with headroom and must survive one of three zones. How many are needed in total?</legend><label><input type="radio" name="quiz-4" value="0"> 17</label><label><input type="radio" name="quiz-4" value="1"> 20</label><label><input type="radio" name="quiz-4" value="2"> 24</label><label><input type="radio" name="quiz-4" value="3"> 48</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 24.</p><p>16 × 3 ÷ 2 = 24, which gives 8 per zone. After losing a zone, 16 remain.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Continue with <a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a> to separate constraints and assumptions from requirements, then Decision criteria and trade-off matrices <span class="muted">(not yet written)</span> to rank and decide among options. Use SLAs, SLOs, and SLIs <span class="muted">(not yet written)</span> to turn these targets into operating objectives, and Availability and reliability mathematics <span class="muted">(not yet written)</span> to compute what your dependencies allow.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

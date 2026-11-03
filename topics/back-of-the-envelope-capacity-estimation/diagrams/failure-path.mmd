@@ -1,0 +1,9 @@
+---
+title: "Failure path: a unit error reaches production"
+---
+flowchart TD
+    A["Design says link is 10 GB/s, but it is 10 Gbit/s"] --> B["Backfill planned: 100 TB in 3 hours"]
+    B --> C["Actual time at full link: 22 hours"]
+    C --> D["Backfill saturates link during peak"]
+    D --> E["Production latency rises"]
+    A -.->|"caught by unit check at review"| F["Throttle and schedule over several nights"]

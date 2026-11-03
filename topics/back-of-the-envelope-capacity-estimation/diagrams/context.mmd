@@ -1,0 +1,12 @@
+---
+title: "Context: how an estimate connects requirements and design"
+---
+flowchart LR
+    R["Requirements: users, retention"] --> E["Estimate: assumptions visible"]
+    P["Product forecast"] --> E
+    T["Traffic measurements"] --> E
+    E --> O["Rates, storage, memory, bandwidth, servers"]
+    O --> D["Design decision"]
+    O --> C["Cost estimate"]
+    O --> L["Load test targets"]
+    L -->|"measured per-server capacity"| E

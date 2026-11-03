@@ -1,0 +1,14 @@
+---
+title: "Sequence: estimating during a design interview"
+---
+sequenceDiagram
+    participant C as Candidate
+    participant I as Interviewer
+    C->>I: I'll assume 100M daily users, 10 reads, 0.1 writes
+    I-->>C: Reasonable
+    C->>C: 1B reads per day is about 12K per second, 36K at peak
+    C->>C: 10M writes per day times 500 B is 5 GB per day
+    C->>I: So 27 TB in 5 years with 3 replicas. Reads dominate
+    C->>I: A cache matters most. A few shards are enough
+    I-->>C: What if links were 100x more popular?
+    C->>I: Reads become 3.6M per second, and the cache becomes the bottleneck

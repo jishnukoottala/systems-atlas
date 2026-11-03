@@ -1,0 +1,6 @@
+[
+  {"id":"A1","statement":"Reads outnumber writes 50 to 1","owner":"Priya","impact":"high","status":"unverified","verifyBy":"2026-01-15","dependents":["ADR-7"]},
+  {"id":"A2","statement":"EU customers stay under 40% of traffic","owner":"Sam","impact":"medium","status":"confirmed","verifyBy":"2026-03-01","dependents":[]},
+  {"id":"A3","statement":"The vendor API allows 500 rps","owner":"Lee","impact":"high","status":"refuted","verifyBy":"2026-02-01","dependents":["ADR-9","ADR-11"]},
+  {"id":"A4","statement":"Average object size is 2 MB","owner":"Noor","impact":"low","status":"unverified","verifyBy":"2030-01-01","dependents":[]}
+]

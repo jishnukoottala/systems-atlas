@@ -1,0 +1,11 @@
+---
+title: "Context: resources a request uses and where the queues hide"
+---
+flowchart LR
+    C["Clients"] -->|"HTTPS"| LB["Load balancer: accept queue"]
+    LB --> W["Web tier: 8 cores"]
+    W --> AP["App tier: 16 cores, thread pool queue"]
+    AP --> LM["Concurrency limiter: bounded queue"]
+    LM -->|"TCP, connection pool"| DB["Database, owns data: 8 cores"]
+    DB --> DK["Disk: 2 volumes"]
+    DB --> RL["BOTTLENECK: one row lock, 400 per second"]

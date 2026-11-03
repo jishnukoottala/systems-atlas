@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Throughput | Systems Atlas</title>
+<meta name="description" content="Throughput is the rate at which a system completes work, measured in units per time: requests per second, messages per second, or bytes per second. Goodput is t">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="O091">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Throughput</h1>
+<p class="meta-line">O091 · Foundational · about 1.3 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>Throughput is the rate at which a system completes work, measured in units per time: requests per second, messages per second, or bytes per second. Goodput is the part of that work that was actually useful: completed successfully, in time, and not duplicated.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Throughput sets how much a system can do and therefore how much it costs per unit of work. It has a hard limit at the most constrained resource, called the bottleneck, and improving anything else accomplishes nothing. The gap between throughput and goodput is where many major outages live. A server can run flat out at its maximum rate while serving nobody, because every response arrives after the client has left. Dashboards show a busy, productive system during what users experience as a total outage.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/latency/index.html">Latency</a></p><h3 id="study-time">Study time</h3><p>About 1.3 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p><a href="../../topics/concurrency-utilization-saturation-and-bottlenecks/index.html">Concurrency, utilization, saturation, and bottlenecks</a>, Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>, <a href="../../topics/back-of-the-envelope-capacity-estimation/index.html">Back-of-the-envelope capacity estimation</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Differentiate throughput, goodput, capacity, and bandwidth, each with its correct unit.</li><li>Find the bottleneck in a pipeline, and explain why other improvements do nothing.</li><li>Explain why adding workers eventually stops helping, using Amdahl's Law and the Universal Scalability Law.</li><li>Show why an unbounded queue destroys goodput during overload, and how bounding it helps.</li><li>Describe when batching improves throughput and what it costs in latency.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A payments company processes settlement files and handles 900 transactions per second at month end. Leadership asks for 3,000. The team doubles application servers from 40 to 80 and gets just 940 transactions per second. They double them again, and throughput <em>falls</em> to 880. Each transaction needs a row lock on a merchant balance, and a few large merchants receive most of the volume. Application servers were never the bottleneck: lock wait on those rows was, and more servers meant more contention.</p>
+<p>The bottleneck analysis takes one afternoon. Transactions wait on locks for 70% of their duration. The fix keeps the servers at 40, batches balance updates per merchant, applying 200 ledger entries in one transaction, and partitions balances into sub-accounts for the largest merchants. Throughput reaches 3,400 per second. Doubling hardware cost a quarter's budget and made things worse, and a design change tripled the throughput at no extra hardware cost.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Picture a highway leading to a two-lane bridge. Traffic flow is limited by the bridge, however many lanes lead up to it. Widening the highway elsewhere only lengthens the queue before the bridge. Past a certain density, cars get in each other's way and flow actually <em>falls</em>, which is why jammed highways move fewer cars than busy ones moving freely.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Cars physically occupy space, whereas software requests occupy abstract resources such as locks and connections, so a bottleneck may be invisible on any infrastructure graph. Drivers also don't abandon a trip halfway and leave a ghost car still using the bridge. Software requests do: a server may keep processing work whose client timed out. This wasted work has no road equivalent, and it is the main source of goodput collapse.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> arrivals, queues, workers, shared resources such as locks and disks.</li><li><strong>State:</strong> queue length, in-flight count, and resource utilization.</li><li><strong>Flow:</strong> arrive, wait, get served, complete, with possible timeout and retry.</li><li><strong>Invariant 1:</strong> in steady state, throughput cannot exceed the capacity of the bottleneck.</li><li><strong>Invariant 2:</strong> in steady state, completions equal arrivals, otherwise a queue is growing or the system is rejecting work.</li><li><strong>Invariant 3:</strong> concurrency = throughput × response time, which is Little's Law. See Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th><th scope="col">Unit</th></tr></thead><tbody><tr><td>Throughput</td><td>Completed work per unit of time</td><td>Requests per second</td></tr><tr><td>Goodput</td><td>Useful completed work per unit of time</td><td>Successful, timely requests per second</td></tr><tr><td>Capacity</td><td>The maximum sustainable throughput</td><td>Requests per second at a stated latency</td></tr><tr><td>Bandwidth</td><td>A link's raw transfer rate</td><td>Bits per second</td></tr><tr><td>Offered load</td><td>The rate of arriving work</td><td>Requests per second</td></tr><tr><td>Bottleneck</td><td>The resource limiting throughput</td><td>Named resource</td></tr><tr><td>Contention</td><td>Waiting for a shared resource</td><td>Fraction of work that is serialized</td></tr><tr><td>Coherency</td><td>Keeping shared state in agreement</td><td>Cost grows with pairs of workers</td></tr></tbody></table></div>
+<p>Bits and bytes cause frequent errors: 1 Gbit/s is 125 MB/s at most, and less after protocol overhead.</p>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>For a pipeline of stages, the sustainable rate equals the smallest stage capacity. If an API can do 5,000 rps, a cache 50,000, and a database 1,200, the system does at most 1,200 for requests requiring the database. Doubling API servers changes nothing. Hence the first question in any throughput problem is &quot;which resource is saturated?&quot; See <a href="../../topics/concurrency-utilization-saturation-and-bottlenecks/index.html">Concurrency, utilization, saturation, and bottlenecks</a>.</p>
+<p>Adding workers scales linearly only if they share nothing. Amdahl's Law says that a serial fraction σ limits speedup to 1 ÷ σ, however many workers you add. With 5% serialized, the limit is 20 times. The Universal Scalability Law adds a coherency cost that grows with pairs of workers, since each must stay consistent with others. This term makes throughput actually fall after a peak, matching the scenario above. Locks, cache-line invalidation, cluster gossip, and distributed coordination can all cause it.</p>
+<p>Batching works because many operations have a large fixed cost and a small per-item cost: a disk flush, a network round trip, a transaction commit. Combining items pays the fixed cost once. If a commit costs 5 ms and each row costs 0.05 ms, one row per commit gets about 198 rows per second, while 100 rows per commit gets 10,000 rows per second. The cost is that each item waits for the batch to fill. See Batching, pipelining, and parallelism <span class="muted">(not yet written)</span>.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p><strong>Amdahl:</strong> speedup(N) = 1 ÷ (σ + (1 − σ) ÷ N).</p>
+<p><strong>USL:</strong> X(N) = λN ÷ (1 + σ(N − 1) + κN(N − 1)), peaking at N = √((1 − σ) ÷ κ).</p>
+<p>Example: λ = 1,000 rps, σ = 0.05, κ = 0.0005. The peak is at √(0.95 ÷ 0.0005) = √1,900 ≈ 44 workers. X(44) = 44,000 ÷ (1 + 2.15 + 0.0005 × 44 × 43) = 44,000 ÷ (3.15 + 0.946) = 44,000 ÷ 4.096 ≈ 10,742 rps. Past that, adding workers reduces throughput.</p>
+<p><strong>Little's Law:</strong> L = λW. At 2,000 rps and 50 ms: L = 2,000 × 0.05 = 100 requests in flight. So 80 connections cap throughput at 80 ÷ 0.05 = 1,600 rps, no matter how fast everything else is.</p>
+<p><strong>TCP limit:</strong> throughput ≤ window size ÷ RTT. A 64 KB window at 100 ms RTT gives 640 KB/s, regardless of bandwidth. See Congestion control and head-of-line blocking <span class="muted">(not yet written)</span>.</p>
+<h3 id="complexity">Complexity</h3>
+<p>Throughput per worker is the inverse of service time, so reducing an operation from O(n) to O(log n) can change capacity by orders of magnitude where n is large. Lock contention behaves differently: it does not show up in big-O analysis, since it depends on concurrency rather than input size. Sharding removes the shared term by giving each partition its own lock, which is why it often beats optimizing code.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>Work arrives at some offered rate.</li><li>If a worker is free, service begins. Otherwise the work is queued.</li><li>As long as offered load stays below capacity, throughput matches offered load, and latency stays near service time.</li><li>Close to capacity, throughput still rises, but queues and latency grow quickly.</li><li>At capacity, throughput flattens, and the excess must either queue or be rejected.</li><li>Beyond it, one of two things happens. With a bounded queue, goodput stays near capacity. With an unbounded queue, wait time exceeds deadlines, and goodput collapses.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-load"><figcaption>System operating regions as offered load rises</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A system moves from underloaded, to near capacity, to overloaded. From overloaded, a bounded queue yields shedding with stable goodput, and an unbounded queue yields collapse. Collapse can persist after load falls, and recovery needs load removal.">stateDiagram-v2
+    [*] --&gt; Underloaded: throughput equals offered load
+    Underloaded --&gt; NearCapacity: load nears bottleneck
+    NearCapacity --&gt; Underloaded: load falls
+    NearCapacity --&gt; Shedding: overload with bounded queue
+    NearCapacity --&gt; Collapse: overload with unbounded queue
+    Shedding --&gt; NearCapacity: load falls
+    Collapse --&gt; Collapse: retries sustain the queue
+    Collapse --&gt; NearCapacity: load removed and queue drained</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A system moves from underloaded, to near capacity, to overloaded. From overloaded, a bounded queue yields shedding with stable goodput, and an unbounded queue yields collapse. Collapse can persist after load falls, and recovery needs load removal.</p></figure>
+<p>The notable difference between Shedding and Collapse is the exit. Shedding recovers as soon as load falls. Collapse can sustain itself through retries after the original cause has ended, and it often requires deliberate removal of load.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Throughput increases with concurrency until a shared resource saturates. Past that, more concurrency only lengthens queues, and it might degrade throughput through contention and context switching. Concurrency limits, connection pools and semaphores are therefore useful even when CPU is free, as they keep work outside the contended region. See Connection pooling <span class="muted">(not yet written)</span> and Bulkheads and isolation pools <span class="muted">(not yet written)</span>.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Strict ordering reduces throughput, because ordered items can't be processed in parallel. Partition keys are the usual compromise: ordering within a key and parallelism across keys. A single very hot key caps throughput at what one consumer can do. See Ordering and partition keys <span class="muted">(not yet written)</span>. Likewise, a stronger durability guarantee requires a flush or a remote acknowledgment for each commit, and batching commits is how databases keep throughput while preserving it.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>Whoever owns the shared resource owns its capacity. When several services share one database, none can guarantee its own throughput without quotas or a designated capacity owner. Flow control is another ownership question: the consumer must be able to signal the producer. If nothing does, the queue in between absorbs the mismatch until it fails. See Backpressure <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: a pipeline in which one resource limits overall throughput</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Clients send requests through a load balancer to API servers, a connection pool, and a database with a hot row lock that is marked as the bottleneck at 1,200 per second. A cache handles some reads. The API runs at 5,000 per second, and the cache at 50,000 per second.">flowchart LR
+    C[&quot;Clients: 3,000 rps offered&quot;] --&gt;|&quot;HTTPS&quot;| LB[&quot;Load balancer: 50,000 rps&quot;]
+    LB --&gt; A[&quot;API servers: 5,000 rps&quot;]
+    A --&gt;|&quot;reads&quot;| CA[&quot;Cache: 50,000 rps, holds copies&quot;]
+    A --&gt;|&quot;TCP, 80 connections&quot;| P[&quot;Connection pool&quot;]
+    P --&gt; D[&quot;Database, owns data: 1,200 writes per second&quot;]
+    D --&gt; L[&quot;BOTTLENECK: row lock on hot balance&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Clients send requests through a load balancer to API servers, a connection pool, and a database with a hot row lock that is marked as the bottleneck at 1,200 per second. A cache handles some reads. The API runs at 5,000 per second, and the cache at 50,000 per second.</p></figure>
+<p>Every stage has its own limit, and the system's write rate equals the lowest figure on the path, here the lock. Doubling API servers leaves that number unchanged. Sometimes the limit is logical, such as a lock, and doesn't appear on CPU or disk graphs. All rates shown are illustrative.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the simulator and scalability model</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. The Python simulator has a seeded arrival generator, a FIFO queue with optional limit, and a worker heap. Outputs are throughput, goodput, and rejection. The TypeScript tool takes load-test samples, fits sigma and kappa, and predicts peak concurrency.">flowchart LR
+    subgraph py[&quot;Python: goodput simulation&quot;]
+      AR[&quot;Seeded arrivals&quot;] --&gt; Q[&quot;FIFO queue: optional limit&quot;]
+      Q --&gt; W[&quot;Worker heap: 10 workers&quot;]
+      W --&gt; R[&quot;Throughput, goodput, rejected&quot;]
+      Q --&gt;|&quot;queue is full&quot;| REJ[&quot;Rejected early&quot;]
+    end
+    subgraph ts[&quot;TypeScript: scaling model&quot;]
+      S[&quot;Load test samples: workers, rps&quot;] --&gt; FIT[&quot;Least-squares USL fit&quot;]
+      FIT --&gt; PK[&quot;Peak concurrency and predictions&quot;]
+    end</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. The Python simulator has a seeded arrival generator, a FIFO queue with optional limit, and a worker heap. Outputs are throughput, goodput, and rejection. The TypeScript tool takes load-test samples, fits sigma and kappa, and predicts peak concurrency.</p></figure>
+<p>The two examples answer different questions. The USL fit asks how far adding workers will carry you, and the simulation asks what happens when load exceeds the result. Together they describe capacity and overload behavior.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: wasted work under an unbounded queue</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. A client sends a request that waits in a long queue. At its 200 ms deadline the client gives up and retries, adding another request. The server later processes the original request, whose result nobody receives, then the retry, which also waits.">sequenceDiagram
+    participant C as Client
+    participant Q as Queue
+    participant W as Worker
+    C-&gt;&gt;Q: Request A
+    Note over Q: Queue wait exceeds 200 ms
+    C--xQ: Deadline passes, client gives up
+    C-&gt;&gt;Q: Retry A2 joins the back of the queue
+    Q-&gt;&gt;W: Start original A
+    W--&gt;&gt;Q: A done, but nobody is waiting
+    Note over W: Counted in throughput, not goodput
+    Q-&gt;&gt;W: Start A2, which is also late</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. A client sends a request that waits in a long queue. At its 200 ms deadline the client gives up and retries, adding another request. The server later processes the original request, whose result nobody receives, then the retry, which also waits.</p></figure>
+<p>This is how throughput stays high while goodput reaches zero. The fix has two parts: bound the queue, so that waiting stays below the deadline, and propagate deadlines, so that workers can drop expired work rather than do it. See Deadlines and cancellation propagation <span class="muted">(not yet written)</span>.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: scaling the wrong component</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Throughput is short of the goal. The team adds servers, and contention on the hot lock grows. Throughput falls. Profiling reveals lock wait. Partitioning and batching remove the bottleneck, so throughput improves.">flowchart TD
+    A[&quot;Throughput below target&quot;] --&gt; B[&quot;Add application servers&quot;]
+    B --&gt; C[&quot;More concurrent transactions&quot;]
+    C --&gt; D[&quot;Lock contention on hot row grows&quot;]
+    D --&gt; E[&quot;Throughput falls while cost rises&quot;]
+    E --&gt; B
+    D --&gt;|&quot;profile shows 70 percent lock wait&quot;| F[&quot;Batch updates and split hot accounts&quot;]
+    F --&gt; G[&quot;Bottleneck moves. Measure again&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Throughput is short of the goal. The team adds servers, and contention on the hot lock grows. Throughput falls. Profiling reveals lock wait. Partitioning and batching remove the bottleneck, so throughput improves.</p></figure>
+<p>The loop back to B represents what happens if nobody identifies the bottleneck. Notice that the good path ends with &quot;bottleneck moves&quot;. Removing a bottleneck always reveals the next one, so capacity work is iterative and each step needs another measurement.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<p>High throughput per unit of hardware reduces cost, leaves room for growth, and shortens backlogs. Batching, partitioning, and asynchronous processing often raise throughput dramatically compared with adding hardware.</p>
+<h3 id="costs">Costs</h3>
+<ul><li>Batching and queuing raise latency for each item.</li><li>Partitioning adds operational complexity and loses cross-partition transactions.</li><li>Running near capacity leaves little headroom, and it raises queueing delay.</li><li>Bounded queues reject work on purpose, which requires clients to handle the rejection.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>Vertical scaling:</strong> simple, often enough, and removes coordination costs up to a limit. See Vertical scaling <span class="muted">(not yet written)</span>.</li><li><strong>Horizontal scaling:</strong> effective if work has low contention. See Horizontal scaling <span class="muted">(not yet written)</span>.</li><li><strong>Reducing work:</strong> caching, removing unneeded calls, and doing less per request.</li><li><strong>Asynchronous processing:</strong> decouples the rate of acceptance from the rate of processing.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>Focus on throughput for batch pipelines, ingestion, month-end processes, and any system whose cost scales with volume. Use goodput as the headline measure for services with deadlines.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Do not maximize throughput on interactive paths at latency's expense: a large batch window can ruin user experience. Do not tune below your actual load: an unused capacity gain is merely a cost.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>A load test shows that adding workers no longer increases throughput.</li><li>Goodput and throughput diverge.</li><li>The bottleneck has moved since your last analysis.</li><li>The cost per unit of work is rising along with volume, which suggests contention.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>Target: 3,000 transactions per second at peak. A single-row commit costs 5 ms of a shard's serialized time. Batching can apply 200 entries in one commit, costing 15 ms in total. Each batch waits at most 50 ms to fill. Each application server handles 500 transactions per second (assumption from a load test).</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Unbatched per-partition rate = 1 ÷ commit time, in transactions per second.</li><li>Batched per-partition rate = batch size ÷ batch commit time.</li><li>Partitions = target ÷ per-partition rate.</li><li>Connections = throughput in commits per second × commit duration in seconds, from Little's Law.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Unbatched: 1 ÷ 0.005 s = 200 per second for each hot row. 3,000 ÷ 200 = 15 partitions if work spreads evenly.</li><li>Batched: 200 ÷ 0.015 s = 13,333 per second per partition, which is more than the target on one.</li><li>Batches needed: 3,000 ÷ 200 = 15 batches per second at full size, with a 67 ms fill time at that rate. So the 50 ms limit triggers first, with 150 entries per batch and 20 batches per second.</li><li>Utilization: 20 × 15 ms = 300 ms of commit time each second, or 30% of one partition's serialized time.</li><li>App servers: 3,000 ÷ 500 = 6.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Run at 70% of capacity for latency and forecast error: 3,000 ÷ 0.7 = 4,286 per second to provision, or 9 application servers (8.57 rounded up). Since batching adds up to 50 ms, confirm it still meets the latency budget.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>Losing one of three zones: 9 × 3 ÷ 2 = 13.5, so 14 servers. If a ledger primary fails, writes pause during failover, so the backlog at 3,000 per second for 30 s reaches 90,000 entries. Draining this within 5 minutes requires 300 extra per second, an easy load at 13,333 per partition, so the batched design recovers quickly. Without batching, a 200-per-second hot row could never catch up.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-goodput-collapse-under-overload">Goodput collapse under overload</h3><dl><dt>Trigger</dt><dd>Offered load exceeds capacity, and queues are unbounded.</dd><dt>Symptoms</dt><dd>High CPU and steady throughput, while almost all requests time out.</dd><dt>Blast radius</dt><dd>All users of the service, and upstream callers who hold connections open.</dd><dt>Detection</dt><dd>Compare successful in-deadline requests with total completions, and watch queue age.</dd><dt>Mitigation</dt><dd>Bound queues, shed excess, and drop expired work.</dd><dt>Recovery</dt><dd>Reduce load until queues drain, then readmit gradually.</dd><dt>Prevention</dt><dd>Use admission control, deadlines, and retry budgets. See Load shedding and admission control <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-retrograde-scaling">Retrograde scaling</h3><dl><dt>Trigger</dt><dd>More workers increase contention or coordination costs.</dd><dt>Symptoms</dt><dd>Adding capacity lowers throughput, and lock wait or context switches rise.</dd><dt>Blast radius</dt><dd>Wasted spend, and possibly less capacity at the worst moment, such as during autoscaling.</dd><dt>Detection</dt><dd>Fit throughput against worker count, and profile lock contention.</dd><dt>Mitigation</dt><dd>Reduce concurrency at once using a limit.</dd><dt>Recovery</dt><dd>Partition shared state or batch writes to remove contention.</dd><dt>Prevention</dt><dd>Run scaling tests over several concurrency levels before relying on autoscaling.</dd></dl></div>
+<div class="failure"><h3 id="failure-hidden-bottleneck-in-a-pool-or-quota">Hidden bottleneck in a pool or quota</h3><dl><dt>Trigger</dt><dd>A connection pool, thread pool, file descriptor limit, or vendor quota caps the rate.</dd><dt>Symptoms</dt><dd>Throughput plateaus while CPU, memory, and disk all look free.</dd><dt>Blast radius</dt><dd>One service first, followed by its callers through backpressure.</dd><dt>Detection</dt><dd>Check pool wait time, Little's Law on in-flight work, and rate-limit responses.</dd><dt>Mitigation</dt><dd>Raise the limit, if the resource behind it has capacity.</dd><dt>Recovery</dt><dd>Resize, then find the next bottleneck.</dd><dt>Prevention</dt><dd>Export saturation metrics on every bounded resource. See File descriptors, sockets, and resource limits <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-hot-partition-caps-a-parallel-system">Hot partition caps a parallel system</h3><dl><dt>Trigger</dt><dd>Most traffic shares one partition key.</dd><dt>Symptoms</dt><dd>Total throughput stalls while most partitions idle, with one consumer lagging.</dd><dt>Blast radius</dt><dd>All messages in the hot partition, including unrelated ones sharing it.</dd><dt>Detection</dt><dd>Per-partition rate and lag.</dd><dt>Mitigation</dt><dd>Move or split the hot key, or apply limits to it.</dd><dt>Recovery</dt><dd>Repartition using a better key and drain the backlog.</dd><dt>Prevention</dt><dd>Choose keys based on measured skew. See Hot keys, hot partitions, and rebalancing <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-batch-failure-amplification">Batch failure amplification</h3><dl><dt>Trigger</dt><dd>One poison item fails a large batch, which retries in full.</dd><dt>Symptoms</dt><dd>Throughput drops to zero on one partition, with repeated identical errors.</dd><dt>Blast radius</dt><dd>All items in the batch, then everything behind it in order.</dd><dt>Detection</dt><dd>Monitor batch retry counts and partition lag.</dd><dt>Mitigation</dt><dd>Split the batch and isolate the failing item.</dd><dt>Recovery</dt><dd>Move the item to quarantine and resume.</dd><dt>Prevention</dt><dd>Use per-item error handling and a dead-letter path. See Poison messages, quarantine, and replay <span class="muted">(not yet written)</span>.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Throughput limits are a target. A denial-of-service attacker aims at the most expensive operation, which is effectively your real capacity limit. A small number of slow or costly requests, such as complex searches, can do as much damage as a flood of cheap ones. Compression bombs and oversized payloads turn small requests into large amounts of work.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Enforce rate and size limits at the first point that you control, before expensive work starts. Internal services need limits as well, since a buggy internal caller can do more damage than an external attacker.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Expensive cryptographic checks reduce throughput, and they can be abused by sending invalid credentials that must be verified. Cache verified results, rate-limit failures, and place cheap checks before expensive ones. When a limit depends on identity, authenticate first using an inexpensive method.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>Without isolation, one tenant's traffic consumes throughput meant for everyone. Use per-tenant quotas measured in resource cost, not just request count. Fair queueing prevents any one tenant from dominating a shared queue. See Tenant isolation and noisy-neighbor controls <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Batching can mix different tenants' data in one payload or log line, so keep tenant identifiers per item and avoid logging batch contents. Encryption costs CPU, but don't remove it to gain throughput. Measure it first, since it's often far smaller than assumed.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Limit by cost, reject oversized and over-complex requests early, and treat rejection as cheap. A rejected request should cost a tiny fraction of a served one. If it doesn't, rejecting offers no protection.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Report throughput by route and outcome, goodput as successful requests within deadline, rejected rate, and utilization and saturation for each resource. Also report in-flight requests, pool wait time, queue depth and age, and batch size distribution. See Golden Signals, RED, and USE methods <span class="muted">(not yet written)</span>.</p>
+<h3 id="logs">Logs</h3>
+<p>Log rejected and expired work in sampled form with a reason, as high-volume logging during overload can itself cause harm. Batches should log size and outcome.</p>
+<h3 id="traces">Traces</h3>
+<p>Traces reveal lock waits and pool waits as gaps or spans. Use span links to represent batches, since one batch trace may relate to many request traces.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Plot offered load, throughput, and goodput together. A separation between them is the clearest sign of overload. Add a chart of throughput against concurrency to spot retrograde scaling.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Page on goodput SLO burn, and on queue age over the deadline. Raise a ticket when peak utilization of a bottleneck stays above its planned level or when adding instances no longer increases throughput.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>99.9% of accepted requests complete successfully within their deadline over 28 days.</li><li>Settlement backlog stays under 5 minutes at peak in 99% of month-end runs.</li><li>Queue age remains under 100 ms for 99% of minutes.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>If goodput drops: compare offered load with historical capacity, and find the saturated resource. Shed non-critical traffic. If retries amplify load, limit them. Confirm expired work is being dropped. Only add instances if the bottleneck really is the instance tier.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>Python is a seeded discrete-event simulator of a 10-worker pool with a capacity of 1,000 requests per second. TypeScript fits the USL to load-test results. Both are offline tools. Simulated time makes overload behavior repeatable, and it lets a 30-second run complete in well under a second.</p>
+<h3 id="data-structures">Data structures</h3>
+<p>The simulator uses a <code>deque</code> for FIFO waiting and a min-heap of finish times for workers, which gives O(log w) per event with w workers. <code>Result</code> separates throughput, goodput, and rejection, since merging those would hide the lesson. The USL fit uses closed-form normal equations for two parameters.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>simulate(offered_rps, Config)</code> returns <code>Result</code>. Run <code>python -m app.main [--queue-limit N]</code> to print a load sweep as JSON lines. TypeScript exports <code>uslThroughput</code>, <code>uslPeak</code>, and <code>fitUsl</code>, and <code>pnpm start [samples.json]</code> runs a fit.</p>
+<h3 id="error-handling">Error handling</h3>
+<p>Invalid rates and worker counts raise explicit errors. The fit requires a baseline at n = 1 and two more samples, because a fit from too little data would look authoritative while being meaningless.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>Neither tool uses real concurrency. The simulator advances a virtual clock, so results depend only on the seed, and tests never flake. That's a deliberate choice: testing overload behavior with real timers tends to be slow and unreliable. See Deterministic distributed-system simulation <span class="muted">(not yet written)</span>.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>The simulation has no retries, no dropped expired work, and a single queue, so it may understate real collapse. The USL is an empirical model: it describes data, and it does not explain causes. The TypeScript sample data is invented for teaching and isn't from any real system.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Measure real systems at several concurrency levels. Add deadline propagation and expired-work dropping, per-tenant fairness, and adaptive concurrency limits. Validate the fitted model against a new measurement before basing a purchase on it.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Universal Scalability Law: why adding workers can stop helping, and then start to hurt.
+// X(N) = lambda * N / (1 + sigma * (N - 1) + kappa * N * (N - 1))
+// sigma models contention (serialized work), and kappa models coherency (cross-talk between workers).
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+export interface UslParams { lambda: number; sigma: number; kappa: number }
+export interface Sample { n: number; throughput: number }
+
+export class InputError extends Error {}
+
+export function uslThroughput(n: number, p: UslParams): number {
+  if (!Number.isInteger(n) || n &lt; 1) throw new InputError(`n must be a positive integer, got ${n}.`);
+  return (p.lambda * n) / (1 + p.sigma * (n - 1) + p.kappa * n * (n - 1));
+}
+
+// Peak concurrency, from setting dX/dN = 0. With no coherency cost, throughput never peaks.
+export function uslPeak(p: UslParams): number | null {
+  if (p.kappa &lt;= 0) return null;
+  return Math.sqrt((1 - p.sigma) / p.kappa);
+}
+
+// The USL rearranges to a quadratic: N / (X(N) / X(1)) - 1 = kappa * x^2 + (sigma + kappa) * x,
+// where x = N - 1. This fits it by least squares with no intercept.
+export function fitUsl(samples: Sample[]): UslParams {
+  const base = samples.find((s) =&gt; s.n === 1);
+  if (!base || base.throughput &lt;= 0) throw new InputError('Samples must include n = 1 with positive throughput.');
+  const points = samples.filter((s) =&gt; s.n &gt; 1);
+  if (points.length &lt; 2) throw new InputError('Need at least two samples with n &gt; 1.');
+  let x2 = 0, x3 = 0, x4 = 0, xy = 0, x2y = 0;
+  for (const s of points) {
+    const x = s.n - 1;
+    const y = s.n / (s.throughput / base.throughput) - 1;
+    x2 += x * x; x3 += x ** 3; x4 += x ** 4; xy += x * y; x2y += x * x * y;
+  }
+  const det = x4 * x2 - x3 * x3;
+  if (det === 0) throw new InputError('Samples are degenerate; use more distinct values of n.');
+  const a = (x2y * x2 - xy * x3) / det; // kappa
+  const b = (xy * x4 - x2y * x3) / det; // sigma + kappa
+  return { lambda: base.throughput, sigma: Math.max(0, b - a), kappa: Math.max(0, a) };
+}
+
+const SAMPLE: Sample[] = [
+  { n: 1, throughput: 955 }, { n: 4, throughput: 3_400 }, { n: 8, throughput: 5_900 },
+  { n: 16, throughput: 8_700 }, { n: 32, throughput: 10_100 }, { n: 64, throughput: 8_400 },
+];
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  try {
+    const path = process.argv[2];
+    const samples = path ? (JSON.parse(readFileSync(path, 'utf8')) as Sample[]) : SAMPLE;
+    const params = fitUsl(samples);
+    const peak = uslPeak(params);
+    console.log(JSON.stringify({ level: 'info', msg: 'usl.fit', sigma: +params.sigma.toFixed(4), kappa: +params.kappa.toFixed(5), peakWorkers: peak === null ? null : Math.round(peak) }));
+    for (const n of [1, 8, 16, 32, 64, 128]) {
+      console.log(JSON.stringify({ n, predictedRps: Math.round(uslThroughput(n, params)), linearRps: Math.round(params.lambda * n) }));
+    }
+  } catch (err) {
+    console.error(JSON.stringify({ level: 'error', msg: 'usl.failed', error: err instanceof Error ? err.message : String(err) }));
+    process.exitCode = 2;
+  }
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Discrete-event simulation of a server pool, separating throughput from goodput.
+
+Throughput counts everything completed. Goodput counts only what finished before the client's
+deadline. Under overload with an unbounded queue, throughput stays high while goodput collapses,
+because servers spend their time on requests whose clients have already given up. A bounded queue
+rejects the excess early and keeps goodput near capacity. The simulation is seeded and repeatable.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import argparse
+import heapq
+import json
+import random
+from collections import deque
+
+from pydantic import BaseModel, Field
+
+
+class Config(BaseModel):
+    workers: int = Field(default=10, gt=0)
+    service_ms: float = Field(default=10, gt=0)
+    deadline_ms: float = Field(default=200, gt=0)
+    duration_s: float = Field(default=30, gt=0)
+    queue_limit: int | None = Field(default=None, ge=0)
+    seed: int = 11
+
+
+class Result(BaseModel):
+    offered_rps: float
+    throughput_rps: float
+    goodput_rps: float
+    rejected_rps: float
+    mean_response_ms: float
+
+
+def simulate(offered_rps: float, cfg: Config) -&gt; Result:
+    if offered_rps &lt;= 0:
+        raise ValueError(&quot;offered_rps must be positive&quot;)
+    rng = random.Random(cfg.seed)
+    end_ms = cfg.duration_s * 1_000
+    queue: deque[float] = deque()
+    finish: list[float] = []  # min-heap of worker completion times
+    t = 0.0
+    completed = good = rejected = 0
+    total_response = 0.0
+
+    def start_ready(now: float) -&gt; None:
+        nonlocal completed, good, total_response
+        while queue and len(finish) &lt; cfg.workers:
+            arrived = queue.popleft()
+            done = now + rng.expovariate(1 / cfg.service_ms)
+            heapq.heappush(finish, done)
+            if done &lt;= end_ms:
+                completed += 1
+                total_response += done - arrived
+                if done - arrived &lt;= cfg.deadline_ms:
+                    good += 1
+
+    while t &lt; end_ms:
+        t += rng.expovariate(offered_rps / 1_000)
+        while finish and finish[0] &lt;= t:
+            now = heapq.heappop(finish)
+            start_ready(now)
+        if cfg.queue_limit is not None and len(queue) &gt;= cfg.queue_limit and len(finish) &gt;= cfg.workers:
+            rejected += 1
+            continue
+        queue.append(t)
+        start_ready(t)
+
+    seconds = cfg.duration_s
+    return Result(
+        offered_rps=offered_rps,
+        throughput_rps=round(completed / seconds, 1),
+        goodput_rps=round(good / seconds, 1),
+        rejected_rps=round(rejected / seconds, 1),
+        mean_response_ms=round(total_response / completed, 1) if completed else 0.0,
+    )
+
+
+def main(argv: list[str] | None = None) -&gt; int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(&quot;--queue-limit&quot;, type=int, default=None)
+    args = parser.parse_args(argv)
+    cfg = Config(queue_limit=args.queue_limit)
+    # 10 workers at 10 ms each: capacity is 1,000 requests per second.
+    for load in (250, 500, 800, 950, 1_100, 1_500, 3_000):
+        print(simulate(load, cfg).model_dump_json())
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/throughput/examples/python
+uv sync --quiet</code></pre>
+<h3 id="run">Run</h3>
+<p>Sweep the offered load with an unbounded queue:</p>
+<pre class="code"><code class="language-bash">uv run python -m app.main | jq -c '{offered_rps, throughput_rps, goodput_rps, mean_response_ms}'</code></pre>
+<p>Now repeat with a queue bounded to 50 requests:</p>
+<pre class="code"><code class="language-bash">uv run python -m app.main --queue-limit 50 | jq -c '{offered_rps, throughput_rps, goodput_rps, rejected_rps, mean_response_ms}'</code></pre>
+<p>Fit the scalability model:</p>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm install --ignore-workspace --silent &amp;&amp; pnpm --silent start</code></pre>
+<p>To check a connection-limited throughput on a real system, compare in-flight requests with the Little's Law value. This counts established connections on a port:</p>
+<pre class="code"><code class="language-bash">lsof -nP -iTCP:3000 -sTCP:ESTABLISHED | wc -l</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>Measured on the review date, with capacity at 1,000 requests per second. Without a queue limit:</p>
+<pre class="code"><code class="language-json">{&quot;offered_rps&quot;:950.0,&quot;throughput_rps&quot;:949.6,&quot;goodput_rps&quot;:949.6,&quot;mean_response_ms&quot;:22.3}
+{&quot;offered_rps&quot;:1100.0,&quot;throughput_rps&quot;:998.8,&quot;goodput_rps&quot;:60.0,&quot;mean_response_ms&quot;:1547.7}
+{&quot;offered_rps&quot;:1500.0,&quot;throughput_rps&quot;:999.5,&quot;goodput_rps&quot;:21.0,&quot;mean_response_ms&quot;:5140.0}
+{&quot;offered_rps&quot;:3000.0,&quot;throughput_rps&quot;:1003.0,&quot;goodput_rps&quot;:8.6,&quot;mean_response_ms&quot;:9943.4}</code></pre>
+<p>With <code>--queue-limit 50</code>:</p>
+<pre class="code"><code class="language-json">{&quot;offered_rps&quot;:950.0,&quot;throughput_rps&quot;:951.2,&quot;goodput_rps&quot;:951.2,&quot;rejected_rps&quot;:2.7,&quot;mean_response_ms&quot;:23.8}
+{&quot;offered_rps&quot;:1100.0,&quot;throughput_rps&quot;:997.6,&quot;goodput_rps&quot;:997.6,&quot;rejected_rps&quot;:106.2,&quot;mean_response_ms&quot;:50.1}
+{&quot;offered_rps&quot;:1500.0,&quot;throughput_rps&quot;:999.5,&quot;goodput_rps&quot;:999.5,&quot;rejected_rps&quot;:505.7,&quot;mean_response_ms&quot;:57.9}
+{&quot;offered_rps&quot;:3000.0,&quot;throughput_rps&quot;:1003.0,&quot;goodput_rps&quot;:1003.0,&quot;rejected_rps&quot;:2001.6,&quot;mean_response_ms&quot;:59.2}</code></pre>
+<p>Throughput is the same in both runs. A 10% overload takes goodput from about 950 down to 60 without a limit, and rejecting just 106 requests per second keeps it near 1,000. The USL fit prints <code>sigma</code> 0.0324, <code>kappa</code> 0.00105, and a peak near 30 workers. Predicted throughput peaks around 10,035 rps at 32 workers and falls to 5,512 at 128. The input data is invented for this lesson.</p>
+<h3 id="cleanup">Cleanup</h3>
+<pre class="code"><code class="language-bash">rm -rf ../python/.venv node_modules</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>command not found: uv</code>: install uv or use another Python 3.12+ environment.</li><li><code>lsof</code> prints only a header when nothing is listening on the port. This is expected if no server is running.</li><li>To fit your own data, include a measurement at <code>n</code> = 1, or else the fit is rejected.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Name the unit and the limit</h3><p>A system has a 10 Gbit/s link, an API tier doing 40,000 rps, and a database doing 6,000 queries per second. Each request runs 2 queries and returns 50 KB. What is the maximum request rate, and which resource sets it?</p><details class="disclosure"><summary>Hint</summary><p>Convert every limit into requests per second.</p></details><details class="disclosure"><summary>Solution</summary><p>Link: 10 Gbit/s = 1.25 GB/s, and ÷ 50 KB = 25,000 rps. API: 40,000 rps. Database: 6,000 ÷ 2 = 3,000 rps. So the limit is 3,000 rps, and the database sets it. Caching half the queries would raise it to 6,000 rps, and the next limit remains a long way off.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Comparing raw numbers without converting them. Treating 10 Gbit/s as 10 GB/s.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> Busy, yet useless</h3><p>Your service shows 1,000 completions per second and 95% CPU, while client-side success has dropped to 3%. Reproduce this using the simulator, and explain the mechanism. What two changes would you make?</p><details class="disclosure"><summary>Hint</summary><p>Run the sweep at 1,500 rps with and without <code>--queue-limit 50</code>, and compare goodput with throughput.</p></details><details class="disclosure"><summary>Solution</summary><p>Unbounded at 1,500 rps, throughput stays near 1,000, but response time grows steadily, as the queue grows by 500 requests each second. Soon wait exceeds the 200 ms deadline, so goodput falls to about 21 requests per second, roughly 2% of throughput. With a limit of 50, queue wait is at most about 50 ms, so nearly all accepted work finishes in time, and goodput stays close to 1,000 while the rest get quick rejections. Change one: bound the queue relative to the deadline. Change two: propagate deadlines and drop expired work.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Adding servers before recognizing that completions were wasted. Believing rejecting requests reduces useful output: here it increases it massively.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Batch or partition?</h3><p>A hot row handles 1 write per 4 ms. You need 5,000 writes per second, with an added latency limit of 20 ms. A batch of size b costs 4 ms + 0.02 ms × b. Is batching enough? What batch size do you pick?</p><details class="disclosure"><summary>Hint</summary><p>Throughput = b ÷ (4 + 0.02b) writes per millisecond. Fill time at 5,000 per second is b ÷ 5 ms.</p></details><details class="disclosure"><summary>Solution</summary><p>Without batching: 250 per second, so 20 partitions would be needed. At b = 50: cost is 5 ms, for 10,000 per second. Fill time is 10 ms, under the 20 ms limit. Utilization: 100 batches per second × 5 ms = 50%. So b = 50 works on one row. At b = 100: fill takes 20 ms, right at the limit, and cost is 6 ms, for 16,667 per second, so there's little reason to go larger. Choose b near 50, and flush on a 10 ms timer for quiet periods.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Forgetting the flush timer, so a low-traffic item waits forever. Forgetting that added latency includes both fill and commit time.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> An ingestion pipeline for 1 million events per second</h3><p>Design ingestion of 1,000,000 events per second at 500 bytes each, written to object storage for analytics, tolerating up to 60 seconds of delay. Identify the bottleneck at each stage, the batching approach, and the behavior when downstream slows.</p><details class="disclosure"><summary>Hint</summary><p>Calculate MB/s. Then ask what the 60-second tolerance lets you do. Think about what happens to the buffer when storage slows.</p></details><details class="disclosure"><summary>Solution</summary><p>Volume: 500 MB/s, or 43.2 TB per day before compression. Stateless collectors take events, and a partitioned log buffers them, with partition count from per-partition throughput. For example, at 10 MB/s per partition, 50 partitions at capacity, about 75 with headroom. Writers batch into files every 60 s or at a size such as 256 MB, compressed and columnar. If storage slows, the log absorbs the backlog: retention of 24 hours is 43.2 TB times replication. Writers lag and catch up with spare parallelism. Collectors must reject or sample if the log itself saturates. Monitor consumer lag in seconds. Small-file count is a throughput concern for the query side.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Writing each event to object storage individually. Ignoring replication in sizing. Having no plan for sustained downstream slowdown.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> Autoscaling made it worse</h3><p>During a traffic spike, autoscaling doubled the fleet, and shortly after, the database hit its connection limit. All requests then started failing. Give your immediate response, the root cause, and two lasting fixes.</p><details class="disclosure"><summary>Hint</summary><p>Multiply fleet size by pool size per instance. Compare with the database's connection limit.</p></details><details class="disclosure"><summary>Solution</summary><p>Cause: 100 instances × 20 connections each = 2,000, beyond the database limit. Scaling the stateless tier moved pressure onto the actual bottleneck, and connection setup itself added load. Response: stop autoscaling, roll the fleet back to a safe number or reduce per-instance pool size, shed non-critical traffic, and confirm the database recovers. Lasting fixes: a connection proxy or multiplexing layer; scaling limits derived from database capacity; and concurrency limits per instance so that excess gets rejected at the top. Add a load test covering scale-out. See Connection pooling <span class="muted">(not yet written)</span> and Autoscaling <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Raising the database connection limit alone, which risks memory exhaustion and more contention. Treating autoscaling as universally safe.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<ul><li><a href="https://www.rfc-editor.org/rfc/rfc2544.html" rel="noopener noreferrer">RFC 2544</a>, March 1999, describes a benchmarking method for network devices, including throughput with zero loss.</li><li><a href="https://www.rfc-editor.org/rfc/rfc6349.html" rel="noopener noreferrer">RFC 6349</a>, August 2011, describes a framework for TCP throughput testing.</li><li><a href="https://www.rfc-editor.org/rfc/rfc9293.html" rel="noopener noreferrer">RFC 9293</a>, August 2022, is the current TCP specification.</li></ul>
+<p>These cover network measurement. There is no general standard for application throughput, so state your method.</p>
+<h3 id="established-practice">Established practice</h3>
+<p>The USL is described in Neil Gunther's <a href="http://www.perfdynamics.com/Manifesto/USLscalability.html" rel="noopener noreferrer">USL work</a>. Goodput and overload handling are discussed in <a href="https://sre.google/sre-book/handling-overload/" rel="noopener noreferrer">Handling Overload</a> and <a href="https://sre.google/sre-book/addressing-cascading-failures/" rel="noopener noreferrer">Addressing Cascading Failures</a>, chapters of <em>Site Reliability Engineering</em>, 2016. These are influential published practices, not standards.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Managed queues and streams, serverless databases, and managed load balancers all have quotas that define your limit. Treat each published quota as a bottleneck candidate and confirm whether burst and sustained limits differ. Provisioned capacity generally trades cost for predictable throughput.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Adaptive concurrency limits, which adjust limits automatically from observed latency, are used in several service proxies and libraries. io_uring improves I/O throughput on Linux by reducing system-call overhead, though its security history has led some environments to restrict it. For GPU inference, batching and token throughput matter more than request rate. These observations rest on public projects and should be checked against your own workload.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>No major standards change was identified in this review. In practice, processor core counts continue to rise, so contention and memory-locality limits increasingly matter more than raw CPU speed. See CPU caches, locality, false sharing, and NUMA <span class="muted">(not yet written)</span>.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Rejecting traffic requires clients that handle rejection well, and many do not. Batching demands idempotent retries and per-item error handling. Measuring goodput depends on knowing the client's deadline, which needs propagation across services.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What is the difference between throughput and bandwidth?</summary><p><strong>Strong answer.</strong> Bandwidth is the maximum data rate of a link. Throughput is what's actually achieved end-to-end. It can be far lower due to protocol overhead, window limits, or a bottleneck elsewhere. Goodput removes overhead and useless work too.</p>
+<p><strong>Why it is asked.</strong> Precise terms lead to correct capacity math.</p>
+<p><strong>Weak-answer warning signs.</strong> Mixing up bits and bytes, or treating the terms as synonyms.</p>
+<p><strong>Follow-up.</strong> What limits TCP throughput on a long-distance link with lots of bandwidth?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is a bottleneck, and how do you find it?</summary><p><strong>Strong answer.</strong> The resource that limits overall throughput. I look for the one that's saturated: high utilization or growing queue. It may be logical, such as a lock or pool. Improving anything else does nothing, and fixing it moves the bottleneck elsewhere.</p>
+<p><strong>Why it is asked.</strong> It is the core of performance reasoning.</p>
+<p><strong>Weak-answer warning signs.</strong> Only checking CPU.</p>
+<p><strong>Follow-up.</strong> CPU, memory, and disk are all at 30% and throughput has plateaued. What next?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> Why does batching raise throughput?</summary><p><strong>Strong answer.</strong> It shares a fixed cost, like a commit or round trip, across many items. So cost per item falls. The price is added latency while the batch fills, and a failure may affect the whole batch, so I set a size limit and a time limit.</p>
+<p><strong>Why it is asked.</strong> Batching is one of the most common design tools.</p>
+<p><strong>Weak-answer warning signs.</strong> Forgetting the latency cost or flush timer.</p>
+<p><strong>Follow-up.</strong> When might batching reduce throughput?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> What is goodput, and why does it matter during overload?</summary><p><strong>Strong answer.</strong> Useful work completed: successful and within deadline. In overload with unbounded queues, servers keep working on requests whose clients have left, so throughput stays high and goodput falls near zero. I would monitor goodput directly, bound queues, and drop expired work.</p>
+<p><strong>Why it is asked.</strong> It separates people who have seen real overload.</p>
+<p><strong>Weak-answer warning signs.</strong> Believing a busy server is a productive one.</p>
+<p><strong>Follow-up.</strong> How do you size a queue given a deadline?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Why could adding servers reduce throughput?</summary><p><strong>Strong answer.</strong> Contention and coherency. Amdahl's Law gives a limit from the serialized part, and the USL adds a pairwise cost that makes throughput decline past a peak. Hot locks, shared connections, and cluster coordination are typical causes. I would measure throughput against workers, then remove the shared resource.</p>
+<p><strong>Why it is asked.</strong> It challenges the assumption that horizontal scaling always helps.</p>
+<p><strong>Weak-answer warning signs.</strong> Having no explanation, or attributing it to bad luck.</p>
+<p><strong>Follow-up.</strong> How would you tell contention apart from coherency in real measurements?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How does Little's Law help with throughput problems?</summary><p><strong>Strong answer.</strong> L = λW links in-flight work, throughput, and response time. If a pool has 80 connections and each query takes 50 ms, the limit is 1,600 per second. It also shows that when latency doubles, you need double the concurrency at the same throughput, which is how slow dependencies exhaust pools.</p>
+<p><strong>Why it is asked.</strong> It shows quantitative reasoning.</p>
+<p><strong>Weak-answer warning signs.</strong> Knowing the formula but not applying it.</p>
+<p><strong>Follow-up.</strong> Apply this to a thread pool calling a slow dependency.</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you get ordering and high throughput together?</summary><p><strong>Strong answer.</strong> Partition by key, so that order holds within a key and parallelism exists across keys. Throughput is then limited by the hottest key, so I would measure skew and choose a key accordingly. Where possible, I would make consumers tolerate reordering, with sequence numbers or idempotent updates.</p>
+<p><strong>Why it is asked.</strong> It is a basic streaming design problem.</p>
+<p><strong>Weak-answer warning signs.</strong> Demanding global order without considering its cost.</p>
+<p><strong>Follow-up.</strong> One customer produces 40% of events. What do you do?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> You need 10 times the throughput. How do you approach it?</summary><p><strong>Strong answer.</strong> I would measure first: find the bottleneck at the current load and a scaling curve. Then I would consider reducing work first, then batching and caching, then partitioning. I'd also plan the sequence, because each fix reveals the next bottleneck. I would estimate the cost per unit at each step and check for a cheaper path, such as vertical scaling.</p>
+<p><strong>Why it is asked.</strong> It tests structured, economical thinking.</p>
+<p><strong>Weak-answer warning signs.</strong> Immediately proposing a rewrite or a sharded system.</p>
+<p><strong>Follow-up.</strong> The measured bottleneck is a third-party API with a fixed quota. What are your options?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you design a system to stay productive under overload?</summary><p><strong>Strong answer.</strong> Admission control at the front, bounded queues with wait below the deadline, deadline propagation and dropping of expired work, retry budgets, and priority so critical traffic survives. I would also make rejection very cheap and test all of it at multiples of capacity.</p>
+<p><strong>Why it is asked.</strong> It is a direct test of resilience design.</p>
+<p><strong>Weak-answer warning signs.</strong> Relying only on autoscaling, which is too slow for this.</p>
+<p><strong>Follow-up.</strong> What is the right response code, and how should clients react?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How do you run a meaningful scalability test?</summary><p><strong>Strong answer.</strong> I measure throughput and latency across a range of concurrency, including past the peak, using an open-loop generator, production-sized data, and realistic skew. I fit a model, such as USL, to find contention. I hold each step long enough for a steady state, and I record which resource saturates at each level.</p>
+<p><strong>Why it is asked.</strong> Bad tests lead to expensive wrong decisions.</p>
+<p><strong>Weak-answer warning signs.</strong> One test at one load level, or stopping before saturation.</p>
+<p><strong>Follow-up.</strong> How would you test the point where it gets worse safely in production?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> Several teams share a database that has hit its limit. How do you decide what to do?</summary><p><strong>Strong answer.</strong> I'd attribute load per team, then look at unit cost and growth forecast. Options include quotas, removing wasteful queries, caching, functional partitioning, and moving a workload to its own store. I would sequence them by benefit and risk, and make capacity ownership explicit, since unowned shared capacity will fill up again.</p>
+<p><strong>Why it is asked.</strong> This mixes technical analysis with organizational design.</p>
+<p><strong>Weak-answer warning signs.</strong> A purely technical answer with no ownership.</p>
+<p><strong>Follow-up.</strong> One team refuses to change, saying they are the biggest revenue source. How do you handle this?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> How would you explain a throughput investment to executives?</summary><p><strong>Strong answer.</strong> In business terms: &quot;Month-end settlement reaches its ceiling within two quarters. Past that, payouts are late.&quot; I would show the forecast against the limit, cost per transaction now and after, and options with risks. I would leave out the internals unless they asked, and I would commit to a measurable outcome.</p>
+<p><strong>Why it is asked.</strong> Principals need funding for invisible work.</p>
+<p><strong>Weak-answer warning signs.</strong> Leading with lock contention or USL parameters.</p>
+<p><strong>Follow-up.</strong> They ask if you can buy your way out with more hardware. What do you say?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Throughput is limited by the bottleneck, and everything else is irrelevant until it moves.</li><li>Goodput, not throughput, measures useful work.</li><li>With unbounded queues, overload can leave throughput high and goodput near zero.</li><li>Bounded queues reject work on purpose, and this raises useful output.</li><li>Contention caps speedup, and coherency can make throughput fall as workers increase.</li><li>Batching spreads fixed costs at the price of added latency.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Have I named and measured the bottleneck?</li><li>Am I using goodput for services with deadlines?</li><li>Have I converted every limit to the same unit?</li><li>Have I checked in-flight limits using Little's Law?</li><li>Does a scaling test show that more workers really help?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>All queues are bounded, and waiting is less than the deadline.</li><li>Every bounded resource exports a saturation metric.</li><li>Expired work gets dropped.</li><li>Retries are limited by a budget.</li><li>Autoscaling maximums account for downstream limits.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Bottleneck:</strong> the resource that limits total throughput.</li><li><strong>Goodput:</strong> useful work completed per unit of time.</li><li><strong>Offered load:</strong> the rate at which work arrives.</li><li><strong>Contention:</strong> waiting on a shared resource.</li><li><strong>Coherency cost:</strong> the cost of keeping workers' state in agreement.</li><li><strong>Retrograde scaling:</strong> throughput falling as concurrency rises.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="3"><fieldset><legend>1. A pipeline's stages handle 5,000, 50,000, and 1,200 requests per second. What is the most it can sustain if all requests touch all stages?</legend><label><input type="radio" name="quiz-0" value="0"> 56,200</label><label><input type="radio" name="quiz-0" value="1"> 18,733</label><label><input type="radio" name="quiz-0" value="2"> 5,000</label><label><input type="radio" name="quiz-0" value="3"> 1,200</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 1,200.</p><p>The slowest stage sets the limit, in this case 1,200.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>2. With 80 connections and a query time of 50 ms, what is the maximum query rate?</legend><label><input type="radio" name="quiz-1" value="0"> 400 per second</label><label><input type="radio" name="quiz-1" value="1"> 1,600 per second</label><label><input type="radio" name="quiz-1" value="2"> 4,000 per second</label><label><input type="radio" name="quiz-1" value="3"> 8,000 per second</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 1,600 per second.</p><p>Little's Law: throughput = 80 ÷ 0.05 s = 1,600 per second.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>3. Why does a bounded queue raise goodput during overload?</legend><label><input type="radio" name="quiz-2" value="0"> It speeds up workers.</label><label><input type="radio" name="quiz-2" value="1"> It reduces the number of retries to zero.</label><label><input type="radio" name="quiz-2" value="2"> It keeps queue wait below the deadline, so accepted work finishes on time.</label><label><input type="radio" name="quiz-2" value="3"> It raises capacity.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> It keeps queue wait below the deadline, so accepted work finishes on time..</p><p>Capacity is unchanged, but servers stop working on requests that would have expired.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>4. With σ = 0.05, what is Amdahl's maximum speedup?</legend><label><input type="radio" name="quiz-3" value="0"> 5 times</label><label><input type="radio" name="quiz-3" value="1"> 20 times</label><label><input type="radio" name="quiz-3" value="2"> 50 times</label><label><input type="radio" name="quiz-3" value="3"> It has no limit.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 20 times.</p><p>The limit is 1 ÷ σ = 20, regardless of worker count.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>5. What does it mean when adding workers lowers throughput?</legend><label><input type="radio" name="quiz-4" value="0"> The load balancer has failed.</label><label><input type="radio" name="quiz-4" value="1"> Coherency costs, such as lock contention or coordination, now exceed the benefit.</label><label><input type="radio" name="quiz-4" value="2"> The test is always wrong.</label><label><input type="radio" name="quiz-4" value="3"> The system has become idle.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Coherency costs, such as lock contention or coordination, now exceed the benefit..</p><p>The USL predicts this after a peak, and the remedy is reducing shared state or limiting concurrency.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Go on to <a href="../../topics/p99-latency/index.html">P99 latency</a> and <a href="../../topics/concurrency-utilization-saturation-and-bottlenecks/index.html">Concurrency, utilization, saturation, and bottlenecks</a> for how to read saturation, then Little’s Law and practical queueing theory <span class="muted">(not yet written)</span> for queue math. Batching, pipelining, and parallelism <span class="muted">(not yet written)</span> covers batching in depth, and Load shedding and admission control <span class="muted">(not yet written)</span> covers staying productive under overload.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/latency/index.html">Latency</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/p99-latency/index.html">P99 latency</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

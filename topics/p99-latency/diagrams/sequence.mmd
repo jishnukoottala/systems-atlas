@@ -1,0 +1,16 @@
+---
+title: "Sequence: computing a fleet p99 correctly"
+---
+sequenceDiagram
+    participant D as Dashboard
+    participant M as Metrics store
+    participant S1 as Series, server 1
+    participant S2 as Series, server 2
+    D->>M: p99 for route over 5 minutes
+    M->>S1: Bucket count increases
+    S1-->>M: le10=900, le100=95, le1000=5
+    M->>S2: Bucket count increases
+    S2-->>M: le10=100, le100=300, le1000=600
+    M->>M: Sum: le10=1000, le100=395, le1000=605
+    M->>M: Rank 0.99 x 2000 = 1980 falls in le1000
+    M-->>D: Between 100 and 1000 ms

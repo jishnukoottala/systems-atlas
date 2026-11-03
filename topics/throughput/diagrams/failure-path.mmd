@@ -1,0 +1,11 @@
+---
+title: "Failure path: scaling the wrong component"
+---
+flowchart TD
+    A["Throughput below target"] --> B["Add application servers"]
+    B --> C["More concurrent transactions"]
+    C --> D["Lock contention on hot row grows"]
+    D --> E["Throughput falls while cost rises"]
+    E --> B
+    D -->|"profile shows 70 percent lock wait"| F["Batch updates and split hot accounts"]
+    F --> G["Bottleneck moves. Measure again"]

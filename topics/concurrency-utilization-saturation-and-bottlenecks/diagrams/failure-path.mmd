@@ -1,0 +1,12 @@
+---
+title: "Failure path: scaling the wrong resource"
+---
+flowchart TD
+    A["Timeouts at 450 rps"] --> B["Dashboards: disk at 90 percent is the highest"]
+    B --> C["Upgrade disk"]
+    C --> D["No improvement"]
+    D --> E["Measure lock wait, previously not charted"]
+    E --> F["Row lock at 112.5 percent"]
+    F --> G["Split counter into 4 sub-counters"]
+    G --> H["Lock limit 1,600 per second"]
+    H --> I["Bottleneck moves to disk at 500 per second"]

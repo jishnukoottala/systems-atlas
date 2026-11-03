@@ -1,0 +1,10 @@
+---
+title: "Component view of the register and sensitivity tools"
+---
+flowchart LR
+    REG["register.json in Git: owned by the architect"] -->|"read"| TS["TypeScript checker: parse and assess"]
+    TS -->|"exit code 0, 1, or 2"| CI["CI gate"]
+    TS -->|"JSON log lines"| LOG["Build log"]
+    IN["Numeric ranges"] --> PY["Python sensitivity: 2n model runs"]
+    PY -->|"ranked swings, threshold crossings"| O["Assumption owners"]
+    O -->|"evidence updates status"| REG

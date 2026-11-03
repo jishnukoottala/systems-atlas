@@ -1,0 +1,18 @@
+---
+title: "Sequence: a limiter under overload"
+---
+sequenceDiagram
+    participant C as Clients
+    participant L as Limiter, 2 slots, queue 1
+    participant D as Database
+    C->>L: Request 1
+    L->>D: Start, 1 of 2 slots
+    C->>L: Request 2
+    L->>D: Start, 2 of 2 slots
+    C->>L: Request 3
+    Note over L: Waits in queue, saturation is 1
+    C->>L: Request 4
+    L-->>C: 503 Retry-After, queue is full
+    D-->>L: Request 1 finished
+    L->>D: Slot passes to request 3
+    D-->>L: Request 2 finished

@@ -1,0 +1,10 @@
+---
+title: "Context: a pipeline in which one resource limits overall throughput"
+---
+flowchart LR
+    C["Clients: 3,000 rps offered"] -->|"HTTPS"| LB["Load balancer: 50,000 rps"]
+    LB --> A["API servers: 5,000 rps"]
+    A -->|"reads"| CA["Cache: 50,000 rps, holds copies"]
+    A -->|"TCP, 80 connections"| P["Connection pool"]
+    P --> D["Database, owns data: 1,200 writes per second"]
+    D --> L["BOTTLENECK: row lock on hot balance"]

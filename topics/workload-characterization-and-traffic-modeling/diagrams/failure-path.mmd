@@ -1,0 +1,11 @@
+---
+title: "Failure path: sized on the mean, broken by the distribution"
+---
+flowchart TD
+    A["Sized on mean: 400 rps per shard"] --> B["Celebrity post: 40,000 rps on one key"]
+    B --> C["One shard saturates"]
+    C --> D["Latency rises, clients retry"]
+    D --> E["Shared connection pools fill up"]
+    E --> F["Unrelated requests fail"]
+    C -->|"detected: per-shard CPU imbalance"| G["Add hot-key cache and per-key limits"]
+    G --> H["Load is flattened and shard recovers"]

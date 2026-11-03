@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Latency | Systems Atlas</title>
+<meta name="description" content="Latency is the time between a cause and its effect: for a request, the time from when it is sent to when a response arrives. It always needs two qualifiers: whe">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="O090">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Latency</h1>
+<p class="meta-line">O090 · Foundational · about 1.3 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>Latency is the time between a cause and its effect: for a request, the time from when it is sent to when a response arrives. It always needs two qualifiers: where it is measured, and which part of the distribution you mean. &quot;50 ms&quot; means nothing until you say &quot;p99, measured at the load balancer, including time to last byte.&quot;</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Latency is what users feel, and it is a capacity signal: it rises well before failure. It also composes unforgivingly. Each hop adds to it, and retries multiply it. Physics sets a floor no budget can buy back, since a round trip between New York and London takes at least roughly 56 ms in fiber on a direct path, and more on a real route. That floor decides whether cross-region synchronous writes are feasible at all. Distinguishing the delay you can remove from the delay you cannot is one of the most useful reflexes in design.</p>
+<h3 id="prerequisites">Prerequisites</h3><p>None</p><h3 id="study-time">Study time</h3><p>About 1.3 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p><a href="../../topics/p99-latency/index.html">P99 latency</a>, <a href="../../topics/tail-latency/index.html">Tail latency</a>, <a href="../../topics/latency-budgets-and-critical-path-analysis/index.html">Latency budgets and critical-path analysis</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Decompose a request's latency into propagation, transmission, processing, and queueing delay.</li><li>Compute physical floors and round-trip costs for connection setup.</li><li>Explain why latency rises sharply as utilization approaches saturation.</li><li>Choose the correct measurement point and metric for a latency claim.</li><li>Use sequential and parallel composition to find where time can actually be saved.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A travel booking site has customers in Sydney and servers in Virginia. Search takes 3.2 seconds to display, and the team plans a database upgrade. A breakdown tells a different story. The distance is about 15,700 km, so with real routes the round trip is about 220 ms. A new connection costs three round trips before the first response byte: TCP, TLS 1.3, and the request itself, for 660 ms. The page makes 8 sequential API calls, each a round trip, for 1,760 ms. Server work totals only 300 ms, of which the database is 90 ms.</p>
+<p>A faster database would save perhaps 50 ms of 3,200 ms. Instead, the team terminates TLS at a Sydney edge node and reuses connections to the origin, batches the eight calls into one, and caches search facets at the edge. Time to display falls under 900 ms, with no database change. The decomposition cost an afternoon, and the upgrade would have cost a quarter.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Sending a package has four sources of delay. The truck's travel time depends on distance (propagation). Loading many boxes takes time, depending on box count and door width (transmission). Sorting at the depot takes some time per box (processing). Waiting in line at the depot depends on how busy it is (queueing). A faster truck does not help if the depot line is the real delay, and more depots don't shorten the road.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Trucks carry a whole load, while networks split data into packets, which may be lost and retransmitted, and congestion control limits how fast a sender may go. A &quot;shipment&quot; also frequently requires several trips, such as handshakes, before any goods move. Finally, in software, waiting clients often send duplicate requests when delayed, so a slow system gets busier, which no postal customer would cause.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> client, network hops, proxies, service instances, queues, dependencies.</li><li><strong>State:</strong> connections (new or reused), queue depth, cache contents, garbage-collection state.</li><li><strong>Flow:</strong> DNS, TCP, TLS, request transmission, queueing, processing, dependency calls, response.</li><li><strong>Invariant 1:</strong> total latency is at least the sum of the physically required hops on the critical path.</li><li><strong>Invariant 2:</strong> sequential steps add, while parallel steps cost at least the slowest member.</li><li><strong>Invariant 3:</strong> a latency number has a location, percentile, and window, or it is not meaningful.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th><th scope="col">Notes</th></tr></thead><tbody><tr><td>Propagation delay</td><td>Distance ÷ signal speed</td><td>About 5 µs per km in fiber</td></tr><tr><td>Transmission delay</td><td>Size ÷ bandwidth</td><td>1 MB at 100 Mbit/s is 80 ms</td></tr><tr><td>Processing delay</td><td>CPU time on a node</td><td>Includes parsing and business logic</td></tr><tr><td>Queueing delay</td><td>Time waiting for a resource</td><td>The most variable component</td></tr><tr><td>RTT</td><td>Round-trip time</td><td>Client and server handshakes cost RTTs</td></tr><tr><td>TTFB</td><td>Time to first byte</td><td>Includes connection setup if new</td></tr><tr><td>Service time</td><td>Time being worked on</td><td>Excludes waiting</td></tr><tr><td>Response time</td><td>Service time plus queueing</td><td>What the client experiences</td></tr></tbody></table></div>
+<p>Note the different terms for bandwidth and latency. Bandwidth is capacity per unit time, and latency is delay. A truck full of disks has huge bandwidth and terrible latency. See <a href="../../topics/throughput/index.html">Throughput</a>.</p>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>Light in fiber travels at about 200,000 km/s, or two-thirds of c. That's 200 km per millisecond, or 5 ms per 1,000 km one way. No software changes this. For small messages over long distances, propagation dominates. For large messages over slow links, transmission does. Within a data center, propagation is negligible, around 500 µs round trip or less, so queueing and processing dominate.</p>
+<p>Queueing comes from variation. If requests arrive at random, then some wait even if the server is idle on average. As utilization ρ grows, the mean wait grows in proportion to ρ ÷ (1 − ρ). So going from 50% to 90% multiplies wait ninefold, and 90% to 99% multiplies it another elevenfold. This nonlinearity is the reason systems look fine right up until they don't, and why a small traffic increase can cause a large latency increase. See Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>.</p>
+<p>Protocols add round trips. New TCP needs one RTT before sending a request. TLS 1.3 adds one, and TLS 1.2 adds two. QUIC combines transport and TLS in one RTT, and resumption can achieve zero. Connection reuse eliminates all of this, which is often the greatest single saving for long-distance traffic. See Connection establishment, keep-alive, and draining <span class="muted">(not yet written)</span> and HTTP/2 and HTTP/3 <span class="muted">(not yet written)</span>.</p>
+<h3 id="mathematics">Mathematics</h3>
+<ul><li>Propagation (ms) = distance (km) × route factor ÷ 200 km per ms.</li><li>Transmission (ms) = size (bytes) × 8 ÷ (bandwidth (Mbit/s) × 1,000).</li><li>Queueing, M/D/1 mean wait = ρ ÷ (2(1 − ρ)) × service time.</li><li>Queueing, M/M/1 mean wait = ρ ÷ (1 − ρ) × service time. Random service time doubles the M/D/1 wait.</li><li>Time to first byte, new connection with TLS 1.3 = 3 × RTT, plus server time.</li></ul>
+<p>Example: 5,600 km × 1.4 ÷ 200 = 39.2 ms one way, or 78.4 ms RTT. New connection: 235 ms. Reused: 78 ms. M/D/1 with a 10 ms service time at 90% utilization: 0.9 ÷ 0.2 × 10 = 45 ms wait.</p>
+<h3 id="complexity">Complexity</h3>
+<p>Latency is commonly a function of algorithmic complexity plus system behavior. An O(n) scan over 10,000 items at 10 ns each adds 100 µs, which is negligible next to one disk seek or round trip. The useful habit is comparing magnitudes:</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Operation</th><th scope="col">Rough order of magnitude</th></tr></thead><tbody><tr><td>Main memory reference</td><td>100 ns</td></tr><tr><td>Read 1 MB from memory</td><td>Tens of µs</td></tr><tr><td>Same-datacenter round trip</td><td>Up to about 500 µs</td></tr><tr><td>SSD random read</td><td>100 µs</td></tr><tr><td>Disk seek</td><td>10 ms</td></tr><tr><td>Intercontinental round trip</td><td>100 to 200 ms</td></tr></tbody></table></div>
+<p>These are approximate teaching values. Measure your own hardware, since they vary substantially.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>DNS resolution, if not cached: 0 to tens of milliseconds, sometimes more. See DNS <span class="muted">(not yet written)</span>.</li><li>TCP handshake: 1 RTT, unless reused.</li><li>TLS handshake: 1 RTT with TLS 1.3, unless resumed or reused.</li><li>Client transmits the request.</li><li>Propagation to the server, through any load balancers and proxies.</li><li>The request waits in queues: socket accept queue, thread pool, event loop.</li><li>Processing, and calls to dependencies, each repeating some of these steps.</li><li>Response transmission, limited by bandwidth and TCP congestion window. Large responses need several RTTs early in a connection.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-request"><figcaption>Request states and where latency accumulates</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A request moves from connecting to sending, queued, processing, and awaiting a dependency, then responding, ending as complete. It can time out in any waiting state. Connection reuse skips the connecting state.">stateDiagram-v2
+    [*] --&gt; Connecting: new connection, 1 to 3 RTT
+    [*] --&gt; Sending: reused connection
+    Connecting --&gt; Sending
+    Sending --&gt; Queued: arrives at server
+    Queued --&gt; Processing: worker becomes free
+    Processing --&gt; AwaitingDependency: downstream call
+    AwaitingDependency --&gt; Processing: reply received
+    Processing --&gt; Responding
+    Responding --&gt; [*]: last byte received
+    Queued --&gt; TimedOut: deadline passes
+    AwaitingDependency --&gt; TimedOut: deadline passes
+    TimedOut --&gt; [*]</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A request moves from connecting to sending, queued, processing, and awaiting a dependency, then responding, ending as complete. It can time out in any waiting state. Connection reuse skips the connecting state.</p></figure>
+<p>Each state has its own remedy. Connecting time falls with reuse and edge termination. Queued time falls with capacity or load shedding. Processing falls through profiling, and waiting on dependencies falls through parallelism or caching. A breakdown tells you which remedy is even relevant.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Parallel calls cost as much as the slowest, not the sum, but they raise the probability of meeting a slow outlier. Concurrent requests contend for shared resources: connection pools, locks, CPU. Under contention, what looks like service time turns into queueing delay. On a single-threaded event loop, one slow synchronous task delays all others behind it. See Blocking versus non-blocking I/O <span class="muted">(not yet written)</span>.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Latency trades off against consistency. A strongly consistent write across regions must wait for a remote acknowledgment, so it pays at least one inter-region RTT. Reading from a nearby replica is fast but may be stale. This relationship is what PACELC <span class="muted">(not yet written)</span> formalizes: even without a partition, you're choosing between latency and consistency. Physical ordering matters too: in a sequential chain, time saved at any step counts only if the step lies on the critical path. See <a href="../../topics/latency-budgets-and-critical-path-analysis/index.html">Latency budgets and critical-path analysis</a>.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>Client teams own connection reuse, payload size, and the number of calls. Edge and platform teams own CDNs, TLS termination, and routing. Service teams own processing and dependency calls. Data location is an ownership decision too: placing data far from its readers imposes a fixed cost that no later optimization can remove. Each hop needs an owner for its share of the budget.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: path of a request from client to data and its latency contributors</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. A user connects over the internet through an edge node, then a private backbone to an origin load balancer, service, cache, and database. Each edge is labeled with typical delay source: long-distance propagation, connection setup, queueing, and storage. Trust boundary separates the public internet from the private network.">flowchart LR
+    U[&quot;User device&quot;] --&gt;|&quot;last mile: variable, 1 to 3 RTT setup&quot;| E[&quot;Edge node: TLS terminates here&quot;]
+    subgraph private[&quot;Private network: operator-owned&quot;]
+      E --&gt;|&quot;backbone: reused connections&quot;| LB[&quot;Origin load balancer&quot;]
+      LB --&gt;|&quot;HTTP, under 1 ms&quot;| S[&quot;Service: queueing, CPU, GC&quot;]
+      S --&gt;|&quot;under 1 ms&quot;| C[&quot;Cache: owns copies&quot;]
+      S --&gt;|&quot;1 to 10 ms&quot;| D[&quot;Database: owns data, disk, locks&quot;]
+    end</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. A user connects over the internet through an edge node, then a private backbone to an origin load balancer, service, cache, and database. Each edge is labeled with typical delay source: long-distance propagation, connection setup, queueing, and storage. Trust boundary separates the public internet from the private network.</p></figure>
+<p>Moving TLS termination close to the user shortens the handshake's round trips to the nearby edge, while the long haul uses already-open connections. The trust boundary sits at the edge, so traffic behind it needs its own protection. Time values shown are illustrative only and vary widely.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the phase timer and calculator</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Requests reach Express route /feed, which uses PhaseTimer to wrap auth, db, ranking, and ads steps, producing a Server-Timing header and a JSON log line. Separately, a Python calculator models propagation, transmission, queueing, and handshake costs.">flowchart LR
+    C[&quot;curl or browser&quot;] --&gt;|&quot;HTTP GET /feed&quot;| R[&quot;Express route&quot;]
+    R --&gt; T[&quot;PhaseTimer.measure&quot;]
+    T --&gt; A[&quot;auth phase&quot;]
+    T --&gt; D[&quot;db phase&quot;]
+    T --&gt; P[&quot;ranking and ads: sequential or parallel&quot;]
+    T --&gt;|&quot;Server-Timing header&quot;| C
+    T --&gt;|&quot;JSON log line&quot;| L[&quot;Structured log&quot;]
+    I[&quot;Distance, bandwidth, size&quot;] --&gt; Q[&quot;Python calculator&quot;]
+    Q --&gt; O[&quot;Propagation, transmission, queueing, handshake report&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Requests reach Express route /feed, which uses PhaseTimer to wrap auth, db, ranking, and ads steps, producing a Server-Timing header and a JSON log line. Separately, a Python calculator models propagation, transmission, queueing, and handshake costs.</p></figure>
+<p>The TypeScript side measures time inside a running service, while the Python side predicts the time physics requires. Use both in practice. Prediction tells you the floor, and measurement tells you how far you are above it.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: new connection compared with a reused connection</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. A client on a new connection does a TCP handshake, TLS handshake, then sends a request and receives a response, totaling three round trips. A later request on the same connection costs one round trip.">sequenceDiagram
+    participant C as Client
+    participant S as Server
+    Note over C,S: New connection with TLS 1.3, 3 RTT to first byte
+    C-&gt;&gt;S: TCP SYN
+    S--&gt;&gt;C: SYN-ACK (1 RTT)
+    C-&gt;&gt;S: TLS ClientHello with ACK
+    S--&gt;&gt;C: TLS ServerHello and Finished (2 RTT)
+    C-&gt;&gt;S: HTTP request with TLS Finished
+    S--&gt;&gt;C: First response byte (3 RTT)
+    Note over C,S: Reused connection, 1 RTT to first byte
+    C-&gt;&gt;S: HTTP request
+    S--&gt;&gt;C: First response byte (1 RTT)</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. A client on a new connection does a TCP handshake, TLS handshake, then sends a request and receives a response, totaling three round trips. A later request on the same connection costs one round trip.</p></figure>
+<p>At 200 ms RTT, the difference between these is 400 ms on each new connection. Since cold-start costs land on first impressions and on clients that reconnect often, connection reuse usually beats server-side tuning for distant clients. It also explains why a short idle timeout on a load balancer can raise user latency.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: rising utilization turns into a latency collapse</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Traffic rises to high utilization, and queueing grows. Latency exceeds client timeouts, and clients retry, adding load. Effective utilization reaches 100 percent. Work completes for clients who have already given up, so goodput falls. Shedding excess load restores service.">flowchart TD
+    A[&quot;Traffic reaches 90 percent utilization&quot;] --&gt; B[&quot;Queue wait grows non-linearly&quot;]
+    B --&gt; C[&quot;Latency exceeds client timeout&quot;]
+    C --&gt; D[&quot;Clients retry, adding load&quot;]
+    D --&gt; E[&quot;Utilization reaches 100 percent&quot;]
+    E --&gt; F[&quot;Servers work on requests whose clients already gave up&quot;]
+    F --&gt; C
+    E --&gt;|&quot;detected: queue age and saturation&quot;| G[&quot;Shed load and cap retries&quot;]
+    G --&gt; H[&quot;Queue drains and latency recovers&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Traffic rises to high utilization, and queueing grows. Latency exceeds client timeouts, and clients retry, adding load. Effective utilization reaches 100 percent. Work completes for clients who have already given up, so goodput falls. Shedding excess load restores service.</p></figure>
+<p>The loop from F back to C is the dangerous part, as the system can stay broken even after the original traffic rise has ended. That is a metastable failure. Scaling alone may not end it, so you need to shed load and cap retries. See Load shedding and admission control <span class="muted">(not yet written)</span> and Retry budgets <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<p>Lower latency improves user experience and leaves more of the budget for retries and work. Faster requests also hold resources for less time, which improves capacity. Moving work to the edge can eliminate entire round trips.</p>
+<h3 id="costs">Costs</h3>
+<ul><li>Edge nodes, replicas, and caches add money, complexity, and consistency issues.</li><li>Lower utilization to reduce queueing means paying for idle capacity.</li><li>Parallel calls raise total load, and hedging can double it.</li><li>Pursuing the last few milliseconds has quickly diminishing returns.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<p>Reducing latency is not always the right goal. <strong>Perceived latency</strong> can improve via progressive rendering and optimistic UI. <strong>Asynchronous workflows</strong> remove the need for a fast response altogether. See Long-running operation APIs <span class="muted">(not yet written)</span>. <strong>Better tail control</strong> may matter more than a better median. See <a href="../../topics/tail-latency/index.html">Tail latency</a>.</p>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>Prioritize latency for interactive journeys, for time-critical systems such as trading and bidding, and at deep fan-out, where each millisecond multiplies. Use measured user or business impact where possible.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Do not optimize batch work for latency when throughput matters instead, and don't add a cache or new region where the gain is imperceptible. Optimizing processing time is pointless if network round trips make up 90% of the total.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>Your user base moves to a new geography.</li><li>A breakdown shows a different dominant component than last time.</li><li>Utilization targets change, since less headroom means more queueing.</li><li>Protocol or edge offerings change what round trips are necessary.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>Service time 10 ms with little variation, peak arrival rate 3,000 requests per second, a target mean wait of at most 5 ms. Assume random arrivals and an even split between servers, and treat each server as a single queue with one worker. These are simplifying assumptions, and real services have more workers.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Utilization ρ = arrival rate per server × service time in seconds.</li><li>Mean wait (ms) = ρ ÷ (2(1 − ρ)) × service time (ms).</li><li>Solve for the maximum ρ, then servers = total arrival rate × service time ÷ ρ.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Required wait of 5 ms at 10 ms service: ρ ÷ (2(1 − ρ)) = 0.5, so ρ = 0.5.</li><li>Each server takes 0.5 ÷ 0.010 s = 50 requests per second at that utilization.</li><li>Servers: 3,000 ÷ 50 = 60.</li><li>If 15 ms of wait were acceptable: ρ ÷ (2(1 − ρ)) = 1.5, so ρ = 0.75. Then each server handles 75 per second, for 40 servers.</li><li>So the 10 ms latency saving costs 20 extra servers, or 50% more.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Latency targets already imply headroom, because they fix the safe utilization. Add a further margin for forecast error, such as 20%: 60 ÷ 0.8 = 75 servers. Illustrative figures should be replaced with measured values.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>Losing one of three zones sends all load to 2 ÷ 3 of the servers. At 60 servers total, the remaining 40 each take 75 requests per second: ρ = 0.75, and the wait rises to 15 ms, which may still be tolerable, since latency degrades and nothing fails. To hold the 5 ms target during failure, you'd need 60 × 3 ÷ 2 = 90 servers. So you should state whether the latency target applies during failure, since that costs 50% more.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-saturation-driven-latency-collapse">Saturation-driven latency collapse</h3><dl><dt>Trigger</dt><dd>Traffic or slow dependencies push utilization near 100%.</dd><dt>Symptoms</dt><dd>Latency climbs by orders of magnitude, followed by timeouts and retries.</dd><dt>Blast radius</dt><dd>The service, its callers, and resources they share.</dd><dt>Detection</dt><dd>Queue age, saturation metrics, and p99 divergence from the median.</dd><dt>Mitigation</dt><dd>Shed load, cap retries, and increase capacity.</dd><dt>Recovery</dt><dd>Let queues drain, and readmit traffic gradually.</dd><dt>Prevention</dt><dd>Set bounded queues, admission control, and capacity based on target wait.</dd></dl></div>
+<div class="failure"><h3 id="failure-connection-churn">Connection churn</h3><dl><dt>Trigger</dt><dd>A short idle timeout, disabled keep-alive, or a proxy that closes connections.</dd><dt>Symptoms</dt><dd>High TTFB for distant clients, plus elevated handshake CPU.</dd><dt>Blast radius</dt><dd>Every client of that path, mostly those far away.</dd><dt>Detection</dt><dd>Compare new connection rate with request rate, and connection time in client timing data.</dd><dt>Mitigation</dt><dd>Extend timeouts along the path so that upstream outlasts downstream.</dd><dt>Recovery</dt><dd>Roll out the configuration and verify reuse ratio.</dd><dt>Prevention</dt><dd>Monitor reuse ratio and test configuration changes.</dd></dl></div>
+<div class="failure"><h3 id="failure-hidden-sequential-calls">Hidden sequential calls</h3><dl><dt>Trigger</dt><dd>A page or service calls dependencies in a chain, often through an N+1 loop.</dd><dt>Symptoms</dt><dd>Latency scales with item count, and traces show a staircase pattern.</dd><dt>Blast radius</dt><dd>One route initially, then the dependency under load.</dd><dt>Detection</dt><dd>Look at trace waterfall views and calls per request.</dd><dt>Mitigation</dt><dd>Batch or parallelize the calls.</dd><dt>Recovery</dt><dd>Deploy a batched endpoint or a join.</dd><dt>Prevention</dt><dd>Budget calls per request and test with realistic data. See N+1 queries <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-garbage-collection-or-runtime-pauses">Garbage-collection or runtime pauses</h3><dl><dt>Trigger</dt><dd>Heap pressure or a long stop-the-world collection.</dd><dt>Symptoms</dt><dd>Sudden pauses that affect all requests on one instance, and periodic latency spikes.</dd><dt>Blast radius</dt><dd>Each affected instance, potentially more if load balancing does not react.</dd><dt>Detection</dt><dd>Runtime pause metrics correlated with latency by instance.</dd><dt>Mitigation</dt><dd>Remove the instance from rotation and reduce allocation pressure.</dd><dt>Recovery</dt><dd>Restart the instance, then tune or fix the leak.</dd><dt>Prevention</dt><dd>Profile allocations and set appropriate limits. See Garbage collection <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-misleading-measurement">Misleading measurement</h3><dl><dt>Trigger</dt><dd>Averages are used, or latency is measured only inside the application.</dd><dt>Symptoms</dt><dd>Dashboards look healthy while users complain.</dd><dt>Blast radius</dt><dd>Decision making. Real problems stay unaddressed for a long time.</dd><dt>Detection</dt><dd>Compare server, load balancer, and real-user measurements for the same route.</dd><dt>Mitigation</dt><dd>Add percentile metrics and client measurement.</dd><dt>Recovery</dt><dd>Rebase targets on the correct metric.</dd><dt>Prevention</dt><dd>Define each latency SLI with a location and percentile. See <a href="../../topics/p99-latency/index.html">P99 latency</a>.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Timing itself can leak information: differences in response time can reveal whether a username exists or whether a secret comparison failed early. The <code>Server-Timing</code> header can expose internal structure, so it should be limited in public responses. Attackers can also target slow routes for cheap denial of service, or hold connections open with slow request techniques.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Clients control how fast they send and read. Protect servers from slow clients using timeouts at the edge. Internal timing details should not cross to the public internet without review.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Authentication adds latency, particularly when it needs remote calls on every request. Cache verification results carefully, within revocation requirements. Compare secrets in constant time, even though this is marginally slower, since speed here would be a vulnerability. Decide whether authorization fails closed if it can't respond within its budget.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>One tenant's heavy query can raise latency for others through shared queues. Isolate through per-tenant concurrency limits and report latency per tenant to detect it. See Tenant isolation and noisy-neighbor controls <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Latency logs can include URLs with user identifiers or tokens. Log route templates instead. Real-user monitoring collects timing from personal devices, so it needs consent and minimization under applicable privacy law.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Enforce header and body read timeouts, and limit concurrent connections per client. Find routes where the cost per request is highest, since an attacker will find them too, and add limits there.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Use a latency histogram by route and status, measured at more than one location. Track queue depth and age, active connections, new connection rate, and DNS and TLS times where available. Separately track successful and failed latency: fast failures make averages look better. See Golden Signals, RED, and USE methods <span class="muted">(not yet written)</span>.</p>
+<h3 id="logs">Logs</h3>
+<p>Log total duration and phase durations in structured form, as the example does, with route template, status, and trace ID. Log slow requests in more detail, using a threshold or sampling to bound the volume.</p>
+<h3 id="traces">Traces</h3>
+<p>Traces show the waterfall: which spans are sequential, which overlap, and where gaps between spans indicate queueing or uninstrumented work. A gap inside a parent span is often the most informative thing on the page. See Distributed tracing <span class="muted">(not yet written)</span>.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Show p50, p95, and p99 together at the load balancer, with a breakdown by phase and instance. Show utilization on the same time axis, as seeing latency rise along with utilization separates queueing from a code regression.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Alert on user-visible SLO burn instead of raw thresholds. Create a warning when queue age climbs, because it comes before user impact. See Multi-window burn-rate alerts <span class="muted">(not yet written)</span>.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>99% of <code>GET /search</code> requests finish within 400 ms at the load balancer over 28 days.</li><li>75% of real-user page loads reach largest contentful paint within 2.5 s, per region.</li><li>99.9% of internal <code>auth</code> calls finish within 20 ms.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>On a latency alert: check whether it affects all instances or one, compare with recent deployments, and look at utilization and queue age. If it is one instance, remove it. If it is load, shed or scale. If it is a dependency, look at its traces and consider its fallback.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>The TypeScript example is an Express service that wraps phases in <code>PhaseTimer</code> and reports them with <code>Server-Timing</code>. A <code>mode=parallel</code> query shows the effect of composition. The Python example is a calculator that models what physics and queueing require, with no HTTP layer since it would add nothing.</p>
+<h3 id="data-structures">Data structures</h3>
+<p><code>PhaseTimer</code> holds an ordered list of <code>Phase</code> records. It takes an injectable clock, so tests are deterministic and need no real delays. Python uses a Pydantic <code>Hop</code> for inputs, with utilization restricted to below 1 because the formula diverges there, and <code>Breakdown</code> for outputs.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>GET /feed?mode=sequential|parallel</code> returns total time and phase names, plus the header. <code>GET /healthz</code> reports liveness. Python functions <code>propagation_ms</code>, <code>transmission_ms</code>, <code>md1_queueing_ms</code>, and <code>rtts_to_first_byte</code> can be used individually.</p>
+<h3 id="error-handling">Error handling</h3>
+<p><code>measure</code> records a phase in <code>finally</code>, so failed phases are timed too. Slow failures are important signals, and dropping them would bias results. Route errors go to a logging error handler with no internal details in the response.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p><code>Promise.all</code> runs ranking and ads concurrently. Since Node runs these timers on a single event loop, a CPU-heavy synchronous task would delay every in-flight phase. The timer is per-request, so concurrent requests do not share measurement state.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>Delays are simulated by timers, so nothing here shows real contention. The measurement is inside the process, so it misses the accept queue and the network. The M/D/1 formula is a simple model, and a multi-worker service queues differently.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Use OpenTelemetry spans rather than manual timers, record histograms, cover client-side measurement, remove detailed <code>Server-Timing</code> from public responses, and add deadlines so that requests stop when their budget is spent.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Express service that breaks a request's latency into named phases and reports them with the
+// W3C Server-Timing header, so a browser or curl can see where the time went.
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
+
+export interface Phase { name: string; durationMs: number }
+
+export class PhaseTimer {
+  readonly phases: Phase[] = [];
+  private readonly now: () =&gt; number;
+  constructor(now: () =&gt; number = () =&gt; performance.now()) { this.now = now; }
+
+  async measure&lt;T&gt;(name: string, work: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+    const start = this.now();
+    try {
+      return await work();
+    } finally {
+      this.phases.push({ name, durationMs: this.now() - start });
+    }
+  }
+
+  header(): string {
+    return this.phases.map((p) =&gt; `${p.name};dur=${p.durationMs.toFixed(1)}`).join(', ');
+  }
+
+  total(): number { return this.phases.reduce((sum, p) =&gt; sum + p.durationMs, 0); }
+}
+
+const sleep = (ms: number): Promise&lt;void&gt; =&gt; new Promise((resolve) =&gt; { setTimeout(resolve, ms); });
+const log = (level: string, msg: string, fields: Record&lt;string, unknown&gt;): void =&gt; {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level, msg, ...fields }));
+};
+
+// Simulated dependency delays in milliseconds. Sequential phases add, and parallel phases cost
+// only as much as the slowest member.
+export const DELAYS = { auth: 5, db: 20, ranking: 30, ads: 45 } as const;
+
+export function createApp(): Express {
+  const app = express();
+  app.get('/healthz', (_req: Request, res: Response) =&gt; { res.json({ status: 'ok' }); });
+
+  app.get('/feed', async (req: Request, res: Response, next: NextFunction) =&gt; {
+    try {
+      const mode = req.query['mode'] === 'parallel' ? 'parallel' : 'sequential';
+      const timer = new PhaseTimer();
+      await timer.measure('auth', () =&gt; sleep(DELAYS.auth));
+      await timer.measure('db', () =&gt; sleep(DELAYS.db));
+      if (mode === 'parallel') {
+        await timer.measure('rank_and_ads', () =&gt; Promise.all([sleep(DELAYS.ranking), sleep(DELAYS.ads)]));
+      } else {
+        await timer.measure('ranking', () =&gt; sleep(DELAYS.ranking));
+        await timer.measure('ads', () =&gt; sleep(DELAYS.ads));
+      }
+      res.setHeader('Server-Timing', timer.header());
+      log('info', 'feed.served', { mode, totalMs: Math.round(timer.total()), phases: timer.phases });
+      res.json({ mode, totalMs: Math.round(timer.total()), phases: timer.phases.map((p) =&gt; p.name) });
+    } catch (err) { next(err); }
+  });
+
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) =&gt; {
+    log('error', 'request.failed', { error: String(err) });
+    res.status(500).json({ error: 'Internal error.' });
+  });
+  return app;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const port = Number(process.env['PORT'] ?? 3000);
+  const server = createApp().listen(port, () =&gt; { log('info', 'server.started', { port }); });
+  process.on('SIGTERM', () =&gt; { server.close(() =&gt; { process.exit(0); }); });
+  process.on('SIGINT', () =&gt; { server.close(() =&gt; { process.exit(0); }); });
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Calculate one-way network latency from physics, to show what no design can buy back.
+
+Latency = propagation + transmission + processing + queueing. The speed of light in fiber sets a
+hard floor on propagation, and that floor is often the deciding number in a multi-region design.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import argparse
+import json
+
+from pydantic import BaseModel, Field
+
+FIBER_KM_PER_MS = 200.0  # about two-thirds of c in vacuum
+ROUTE_FACTOR = 1.4  # illustrative: real fiber paths are longer than the great-circle distance
+
+
+class Hop(BaseModel):
+    distance_km: float = Field(ge=0)
+    bandwidth_mbps: float = Field(gt=0)
+    payload_bytes: int = Field(ge=0)
+    processing_ms: float = Field(default=0.0, ge=0)
+    utilization: float = Field(default=0.0, ge=0, lt=1)
+    service_ms: float = Field(default=0.0, ge=0)
+
+
+class Breakdown(BaseModel):
+    propagation_ms: float
+    transmission_ms: float
+    processing_ms: float
+    queueing_ms: float
+    total_ms: float
+
+
+def propagation_ms(distance_km: float, route_factor: float = ROUTE_FACTOR) -&gt; float:
+    return distance_km * route_factor / FIBER_KM_PER_MS
+
+
+def transmission_ms(payload_bytes: int, bandwidth_mbps: float) -&gt; float:
+    return payload_bytes * 8 / (bandwidth_mbps * 1_000)
+
+
+def md1_queueing_ms(utilization: float, service_ms: float) -&gt; float:
+    &quot;&quot;&quot;Mean M/D/1 wait: rho / (2 * (1 - rho)) * service time. Grows sharply as rho nears 1.&quot;&quot;&quot;
+    return utilization / (2 * (1 - utilization)) * service_ms
+
+
+def breakdown(hop: Hop) -&gt; Breakdown:
+    prop = propagation_ms(hop.distance_km)
+    tx = transmission_ms(hop.payload_bytes, hop.bandwidth_mbps)
+    queue = md1_queueing_ms(hop.utilization, hop.service_ms)
+    total = prop + tx + hop.processing_ms + queue
+    return Breakdown(
+        propagation_ms=round(prop, 3), transmission_ms=round(tx, 3),
+        processing_ms=hop.processing_ms, queueing_ms=round(queue, 3), total_ms=round(total, 3),
+    )
+
+
+def rtts_to_first_byte(rtt_ms: float, *, tls13: bool = True, reused: bool = False) -&gt; float:
+    &quot;&quot;&quot;Time to first response byte, in milliseconds: TCP handshake, TLS, then request and response.&quot;&quot;&quot;
+    if reused:
+        return rtt_ms
+    return rtt_ms * (1 + (1 if tls13 else 2) + 1)
+
+
+def main(argv: list[str] | None = None) -&gt; int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(&quot;--km&quot;, type=float, default=5_600, help=&quot;distance; default is roughly New York to London&quot;)
+    parser.add_argument(&quot;--mbps&quot;, type=float, default=100)
+    parser.add_argument(&quot;--bytes&quot;, type=int, default=1_000_000)
+    args = parser.parse_args(argv)
+    hop = Hop(distance_km=args.km, bandwidth_mbps=args.mbps, payload_bytes=args.bytes)
+    rtt = 2 * propagation_ms(args.km)
+    print(json.dumps({
+        &quot;one_way&quot;: breakdown(hop).model_dump(),
+        &quot;rtt_floor_ms&quot;: round(rtt, 1),
+        &quot;first_byte_new_tls13_ms&quot;: round(rtts_to_first_byte(rtt), 1),
+        &quot;first_byte_reused_ms&quot;: round(rtts_to_first_byte(rtt, reused=True), 1),
+        &quot;queueing_ms_at_utilization&quot;: {
+            str(u): round(md1_queueing_ms(u, 10), 1) for u in (0.5, 0.8, 0.9, 0.95, 0.99)
+        },
+    }, indent=2))
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/latency/examples/typescript
+pnpm install --ignore-workspace</code></pre>
+<h3 id="run">Run</h3>
+<p>Start the service:</p>
+<pre class="code"><code class="language-bash">PORT=3000 pnpm start</code></pre>
+<p>In another terminal, compare the two modes:</p>
+<pre class="code"><code class="language-bash">curl -s localhost:3000/feed | jq -c '{mode, totalMs}'</code></pre>
+<pre class="code"><code class="language-bash">curl -s 'localhost:3000/feed?mode=parallel' | jq -c '{mode, totalMs}'</code></pre>
+<p>Use curl's timing variables to split up real connection time for a site you may test:</p>
+<pre class="code"><code class="language-bash">curl -so /dev/null -w 'dns %{time_namelookup}  tcp %{time_connect}  tls %{time_appconnect}  ttfb %{time_starttransfer}  total %{time_total}\n' https://www.rfc-editor.org/</code></pre>
+<p>Then calculate the physical floor:</p>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run python -m app.main | jq -c '{rtt_floor_ms, first_byte_new_tls13_ms, first_byte_reused_ms, queueing_ms_at_utilization}'</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>Sequential mode reports a <code>totalMs</code> of around 100 and parallel about 70, because ads and ranking overlap, so the parallel step costs 45 ms and not 75 ms. Timer resolution will add a few milliseconds. The Python tool prints:</p>
+<pre class="code"><code class="language-json">{&quot;rtt_floor_ms&quot;:78.4,&quot;first_byte_new_tls13_ms&quot;:235.2,&quot;first_byte_reused_ms&quot;:78.4,&quot;queueing_ms_at_utilization&quot;:{&quot;0.5&quot;:5.0,&quot;0.8&quot;:20.0,&quot;0.9&quot;:45.0,&quot;0.95&quot;:95.0,&quot;0.99&quot;:495.0}}</code></pre>
+<p>Going from 90% to 99% utilization raises the wait 11 times, for a 10% increase in traffic.</p>
+<h3 id="cleanup">Cleanup</h3>
+<p>Stop the server with Ctrl-C, then:</p>
+<pre class="code"><code class="language-bash">rm -rf ../typescript/node_modules .venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li>The curl timing values are cumulative from the start of the request. Subtract adjacent values to get each phase.</li><li><code>EADDRINUSE</code>: another process is holding the port. Find it with <code>lsof -i :3000</code>.</li><li><code>time_appconnect</code> is zero for plain HTTP, because TLS is not used.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> What dominates?</h3><p>For each case, name the dominant delay and one effective fix: (a) a 2 KB API response from Tokyo to São Paulo, (b) a 4 GB file between two machines on a 1 Gbit/s link in one data center, (c) a 5 KB response within a data center at 97% CPU.</p><details class="disclosure"><summary>Hint</summary><p>Compute the numbers. Distances are about 18,500 km for (a).</p></details><details class="disclosure"><summary>Solution</summary><p>(a) Propagation: 18,500 × 1.4 ÷ 200 = 130 ms one way, while transmission is negligible. Fix: serve from nearby or reuse connections. (b) Transmission: 4 GB × 8 ÷ 1 Gbit/s = 32 s. Fix: more bandwidth, compression, or parallel transfers. (c) Queueing: at 97% utilization, wait is many times the service time. Fix: add capacity or shed load, since code tuning can't catch up with this.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Answering &quot;use a cache&quot; for all three. Using 1 GB = 1,000 Mbit, which ignores the factor of 8.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> The staircase trace</h3><p>A trace shows <code>GET /orders</code> at 900 ms, with 30 consecutive 28 ms database spans, plus a 40 ms gap before the first span. Explain each visible feature, then give the fix and the expected result.</p><details class="disclosure"><summary>Hint</summary><p>Thirty sequential spans of equal size suggest a loop. A gap is time spent somewhere uninstrumented.</p></details><details class="disclosure"><summary>Solution</summary><p>This is the N+1 pattern: 30 × 28 ms = 840 ms. The 40 ms gap may be queueing for a worker or a connection, or uninstrumented work. So check queue metrics. Fix: one batched query taking perhaps 40 ms, so about 100 ms in total, and a test that limits queries per request. Investigate the gap separately using pool wait metrics.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Parallelizing 30 queries, which relieves latency but raises database load and pool pressure. Ignoring the gap.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> How much does the wait target cost?</h3><p>Service time is 20 ms with low variance. Peak traffic is 4,000 requests per second. Using M/D/1 and one queue per server, compare server counts for mean waits of 5 ms, 20 ms, and 60 ms.</p><details class="disclosure"><summary>Hint</summary><p>Set ρ ÷ (2(1 − ρ)) × 20 equal to the target, and solve for ρ.</p></details><details class="disclosure"><summary>Solution</summary><p>Let x = target ÷ 20 ms. Then ρ = 2x ÷ (1 + 2x). 5 ms: x = 0.25, ρ = 0.333, 16.7 requests per second per server, so 240 servers. 20 ms: x = 1, ρ = 0.667, 33.3 per second, 120 servers. 60 ms: x = 3, ρ = 0.857, 42.9 per second, 94 servers (93.3 rounded up). Halving servers from 240 to 120 costs just 15 ms of wait. Below that, returns shrink further.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Assuming linear relationships. Forgetting that throughput per server is ρ ÷ service time.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> A latency target for a global API</h3><p>You must offer p99 under 150 ms for reads, and under 300 ms for writes, worldwide. Regions are 80 to 250 ms apart. Sketch the data placement, what's achievable physically, and what you would tell the product owner.</p><details class="disclosure"><summary>Hint</summary><p>Compare 300 ms with the RTT between the farthest regions. Then ask if each user's data really needs a global home.</p></details><details class="disclosure"><summary>Solution</summary><p>Reads: local replicas in each major region, with stale reads accepted where product allows. Writes: a single global primary fails for distant users, as 250 ms RTT plus processing and a new connection overruns the target. So home each user's data in their nearest region, with asynchronous replication elsewhere, and route writes to the home region. Tell the owner: writes from a traveling user may be slower; a user's writes in another region may be stale for a moment; strong global consistency on all writes can't meet 300 ms. See Cross-region replication and write ownership <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Promising both worldwide strong consistency and low latency. Ignoring connection setup round trips.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> Fine by CPU, slow for users</h3><p>Users in Europe report slowness since a deployment an hour ago, while p99 at the US load balancer is unchanged, and CPU is flat. What do you check and in what order? What change could cause this?</p><details class="disclosure"><summary>Hint</summary><p>The server's view can't see time spent before the request arrives. Think of connections.</p></details><details class="disclosure"><summary>Solution</summary><p>Check real-user timing by region, and split it into DNS, connect, TLS, and TTFB. Check the new connection rate and whether the deployment changed idle timeouts, keep-alive, TLS configuration, an edge route, or DNS. A likely cause: an idle timeout or keep-alive change has forced new connections, adding two extra RTTs of more than 150 ms in total for European users. Roll back the change, and confirm connection reuse recovers. Follow up: add a reuse-ratio metric, plus regional real-user SLOs.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Concluding there's no problem because server metrics are normal. Looking only at application changes.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<ul><li><a href="https://www.rfc-editor.org/rfc/rfc7679.html" rel="noopener noreferrer">RFC 7679</a>, January 2016, and <a href="https://www.rfc-editor.org/rfc/rfc2681.html" rel="noopener noreferrer">RFC 2681</a>, September 1999, define one-way and round-trip delay metrics for IP networks.</li><li><a href="https://www.rfc-editor.org/rfc/rfc8446.html" rel="noopener noreferrer">RFC 8446</a>, August 2018, TLS 1.3, which reduced the full handshake to one RTT.</li><li><a href="https://www.rfc-editor.org/rfc/rfc9000.html" rel="noopener noreferrer">RFC 9000</a>, May 2021, QUIC, which combines transport and cryptographic setup.</li><li><a href="https://www.w3.org/TR/server-timing/" rel="noopener noreferrer">W3C Server Timing</a>, a W3C working draft, defines the header used in this lesson.</li><li><a href="https://www.w3.org/TR/navigation-timing-2/" rel="noopener noreferrer">W3C Navigation Timing Level 2</a> defines browser timing measurements.</li></ul>
+<h3 id="established-practice">Established practice</h3>
+<p><a href="https://research.google/pubs/the-tail-at-scale/" rel="noopener noreferrer">The Tail at Scale</a>, Dean and Barroso, 2013, is the widely cited paper on latency variability in large fan-out systems. <a href="https://web.dev/articles/vitals" rel="noopener noreferrer">Web Vitals</a>, Google guidance, updated periodically, is a common set of field metrics for page experience. It's vendor guidance and not a formal standard, though it's influential.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>CDNs and global accelerators terminate connections near users. Real-user monitoring products report field latency, and cloud load balancers publish latency metrics. Compare where each one starts and stops its clock.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>HTTP/3 deployment continues to grow, particularly for mobile clients on lossy networks. Edge compute moves logic close to users, though the benefit disappears if every request must still return to a distant database. LLM streaming has changed the common measure to time to first token and tokens per second. These are observations from public products, and they are not settled standards.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>Interaction to Next Paint replaced First Input Delay as a Core Web Vital in March 2024. Check current thresholds in the guidance above, since they may change.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Corporate networks or middleboxes may block UDP, which requires a fallback from QUIC to TCP. Edge deployment has data-residency implications, and client-side measurement needs privacy review.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What are the main components of network latency?</summary><p><strong>Strong answer.</strong> Propagation from distance, transmission from size over bandwidth, processing at each node, and queueing while waiting for a resource. Each has a different remedy. Propagation only falls with proximity, and queueing falls by adding capacity or reducing load.</p>
+<p><strong>Why it is asked.</strong> It checks whether you can reason from first principles.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating bandwidth and latency as the same thing.</p>
+<p><strong>Follow-up.</strong> Which one dominates on a same-rack call, and why?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is the difference between latency and throughput?</summary><p><strong>Strong answer.</strong> Latency is how long one operation takes, and throughput is how many complete per unit of time. They're related but independent: batching can raise throughput while raising latency, and a slow large pipe has high throughput with high latency.</p>
+<p><strong>Why it is asked.</strong> The terms get confused constantly.</p>
+<p><strong>Weak-answer warning signs.</strong> Saying one is simply the inverse of the other.</p>
+<p><strong>Follow-up.</strong> Give a change that improves one and harms the other.</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> Why does a new HTTPS connection cost so much more than a reused one?</summary><p><strong>Strong answer.</strong> TCP takes one RTT and TLS 1.3 another, before the request's own RTT. So first byte takes three RTTs against one on a reused connection. At 200 ms RTT, that's 400 ms extra before the server does anything.</p>
+<p><strong>Why it is asked.</strong> It reveals an understanding of protocol costs.</p>
+<p><strong>Weak-answer warning signs.</strong> Not considering handshakes, or having no idea how many round trips are required.</p>
+<p><strong>Follow-up.</strong> How do QUIC and session resumption change this?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Why does latency rise sharply as utilization approaches 100%?</summary><p><strong>Strong answer.</strong> Queueing delay is proportional to ρ ÷ (1 − ρ). Variation creates waiting even under capacity, and spare capacity to clear backlogs disappears as ρ rises. So moving from 90% to 99% utilization multiplies waiting by 11. That's why teams set utilization targets by latency goal, not by cost alone.</p>
+<p><strong>Why it is asked.</strong> Fundamental to capacity and overload reasoning.</p>
+<p><strong>Weak-answer warning signs.</strong> Assuming linear degradation.</p>
+<p><strong>Follow-up.</strong> How would you decide on a target utilization?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> A page takes 3 seconds. How do you find where the time goes?</summary><p><strong>Strong answer.</strong> Start from real-user data split by DNS, connect, TLS, TTFB, and render. Then use traces for the server part, looking at the waterfall for sequential calls and gaps. Compare across regions. Only after this do I choose a fix, since the answer is commonly round trips, not code.</p>
+<p><strong>Why it is asked.</strong> Tests systematic diagnosis.</p>
+<p><strong>Weak-answer warning signs.</strong> Jumping to caching or database tuning.</p>
+<p><strong>Follow-up.</strong> TTFB is 2 seconds. What's next?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> When does parallelizing calls not help?</summary><p><strong>Strong answer.</strong> When the slowest call dominates, parallelism saves only the others' time. It raises peak load and pool usage. With many parallel calls, the odds of hitting a slow outlier rise too, so tail latency could worsen. It also doesn't help on shared bottlenecks such as one database.</p>
+<p><strong>Why it is asked.</strong> Parallelism is a frequent reflexive answer.</p>
+<p><strong>Weak-answer warning signs.</strong> Saying parallel is always faster.</p>
+<p><strong>Follow-up.</strong> How would you protect a dependency from parallel fan-out?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Where should latency be measured?</summary><p><strong>Strong answer.</strong> At several places, as each misses something. Inside the application misses accept queues and network. The load balancer catches server-side queueing and failures. Real-user measurement catches the last mile and rendering. SLOs usually sit at the load balancer or client, since that's closest to user experience.</p>
+<p><strong>Why it is asked.</strong> Many dashboards measure in the most flattering place.</p>
+<p><strong>Weak-answer warning signs.</strong> Only measuring application handler time.</p>
+<p><strong>Follow-up.</strong> Why can the two measurements disagree, even for the same request?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you reduce latency for users on another continent without moving the database?</summary><p><strong>Strong answer.</strong> I would terminate TLS at a nearby edge to save handshake round trips, keep long-lived connections from the edge to origin, and batch client calls into fewer round trips. I would cache read-heavy content at the edge and keep payloads small. Reads could use a local replica if staleness is acceptable. Then I would measure which of these actually moved real-user latency.</p>
+<p><strong>Why it is asked.</strong> It exercises reasoning across layers.</p>
+<p><strong>Weak-answer warning signs.</strong> Only offering &quot;multi-region&quot;.</p>
+<p><strong>Follow-up.</strong> Edge caching is impossible since responses are personalized. What's left?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> Would you run a latency-sensitive service at 40% or 80% utilization?</summary><p><strong>Strong answer.</strong> It depends on the target and variance. I would derive it: with service time and desired wait, queueing theory gives a maximum utilization, then I'd validate through a load test. With many workers per queue, higher utilization is possible at the same wait. I would show the cost of each option and factor in failure capacity.</p>
+<p><strong>Why it is asked.</strong> It tests cost and latency judgment.</p>
+<p><strong>Weak-answer warning signs.</strong> Giving a universal number.</p>
+<p><strong>Follow-up.</strong> Why does a large pooled server tolerate higher utilization than several small ones?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> Latency regressed by 5 ms per release for a year. How do you prevent slow degradation?</summary><p><strong>Strong answer.</strong> Add latency budgets per journey and continuous performance tests that compare against a fixed baseline, not the prior release. Track long-term trends on the same dashboard, and give each team ownership of its share of the budget. Then regressions become visible decisions.</p>
+<p><strong>Why it is asked.</strong> Slow degradation escapes alerting.</p>
+<p><strong>Weak-answer warning signs.</strong> Relying on alerts tied to thresholds.</p>
+<p><strong>Follow-up.</strong> How would you handle noise in performance tests?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> How do you decide whether a latency investment is worth it?</summary><p><strong>Strong answer.</strong> I would relate it to outcomes: run a controlled experiment, adding artificial delay where safe, or analyze conversion by latency percentile. I would estimate the benefit and compare it to engineering and running cost and to alternatives. Many latency targets are set by habit, so I would ask what happens to the business at 100 ms slower.</p>
+<p><strong>Why it is asked.</strong> Principals tie engineering to value.</p>
+<p><strong>Weak-answer warning signs.</strong> Citing famous company statistics as if they apply universally.</p>
+<p><strong>Follow-up.</strong> The experiment shows no effect on conversion. What now?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> A team proposes synchronous cross-region replication for durability. How do you evaluate its latency consequences?</summary><p><strong>Strong answer.</strong> I would compute the floor first: every write gains at least one inter-region RTT, plus tail effects, and connection pools hold that longer, which reduces capacity. Then I would compare data classes: maybe only the ledger needs this. I would look at alternatives such as nearby synchronous replicas in a metro area, and show the RPO, latency, and cost of each. The decision then belongs to the data's owner.</p>
+<p><strong>Why it is asked.</strong> It connects physics, durability, and business risk.</p>
+<p><strong>Weak-answer warning signs.</strong> Approving or rejecting without the numbers.</p>
+<p><strong>Follow-up.</strong> How does holding connections longer affect throughput? Use Little's Law.</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Latency = propagation + transmission + processing + queueing.</li><li>Physics sets a floor of about 5 ms per 1,000 km one way in fiber.</li><li>A new TLS 1.3 connection takes 3 RTTs to first byte, and a reused one takes 1.</li><li>Queueing grows as ρ ÷ (1 − ρ), so saturation hits suddenly.</li><li>Decompose before you optimize. The dominant part is often not your code.</li><li>Always state location, percentile, and window.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Do I have a breakdown of the time, not just a total?</li><li>Have I calculated the physical floor for this path?</li><li>Does the optimization target the critical path?</li><li>What is the target utilization, given the target wait?</li><li>Does the latency target apply during failure?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Latency histograms exist per route, at the load balancer.</li><li>Real-user timing is collected by region.</li><li>Connection reuse is monitored.</li><li>Queue age and saturation are monitored.</li><li>Deadlines and bounded queues prevent runaway waiting.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>RTT:</strong> round-trip time.</li><li><strong>TTFB:</strong> time to first byte.</li><li><strong>Service time:</strong> the time spent actively working on a request.</li><li><strong>Response time:</strong> service time plus waiting.</li><li><strong>Utilization (ρ):</strong> the fraction of time a resource is busy.</li><li><strong>Critical path:</strong> the sequence of steps that determines total time.</li><li><strong>Metastable failure:</strong> an overload that sustains itself after the trigger is gone.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="2"><fieldset><legend>1. A 1 MB response on a 100 Mbit/s link takes how long to transmit?</legend><label><input type="radio" name="quiz-0" value="0"> 1 ms</label><label><input type="radio" name="quiz-0" value="1"> 10 ms</label><label><input type="radio" name="quiz-0" value="2"> 80 ms</label><label><input type="radio" name="quiz-0" value="3"> 800 ms</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 80 ms.</p><p>1,000,000 bytes × 8 = 8,000,000 bits. Dividing by 100,000,000 bits per second gives 0.08 s.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. What is the time to first byte on a new TLS 1.3 connection with an RTT of 100 ms, ignoring server time?</legend><label><input type="radio" name="quiz-1" value="0"> 100 ms</label><label><input type="radio" name="quiz-1" value="1"> 200 ms</label><label><input type="radio" name="quiz-1" value="2"> 300 ms</label><label><input type="radio" name="quiz-1" value="3"> 400 ms</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 300 ms.</p><p>One RTT for TCP, one for TLS 1.3, and one for the request and response.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>3. In M/D/1 with a 10 ms service time, what is the mean wait at 90% utilization?</legend><label><input type="radio" name="quiz-2" value="0"> 9 ms</label><label><input type="radio" name="quiz-2" value="1"> 10 ms</label><label><input type="radio" name="quiz-2" value="2"> 45 ms</label><label><input type="radio" name="quiz-2" value="3"> 90 ms</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 45 ms.</p><p>0.9 ÷ (2 × 0.1) × 10 ms = 45 ms.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>4. Two parallel calls take 30 ms and 45 ms. What do they add to request time?</legend><label><input type="radio" name="quiz-3" value="0"> 30 ms</label><label><input type="radio" name="quiz-3" value="1"> 45 ms</label><label><input type="radio" name="quiz-3" value="2"> 75 ms</label><label><input type="radio" name="quiz-3" value="3"> 37.5 ms</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 45 ms.</p><p>Parallel steps cost as much as the slowest member.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>5. CPU is flat and server p99 is unchanged, but European users report slowness after a deployment. What is the most useful next step?</legend><label><input type="radio" name="quiz-4" value="0"> Conclude nothing is wrong.</label><label><input type="radio" name="quiz-4" value="1"> Upgrade the database.</label><label><input type="radio" name="quiz-4" value="2"> Check real-user timing by region, split by connect and TLS, and check connection reuse.</label><label><input type="radio" name="quiz-4" value="3"> Add more servers.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Check real-user timing by region, split by connect and TLS, and check connection reuse..</p><p>Server-side measurements can't see time before a request arrives, and a timeout or keep-alive change can add several RTTs.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Go on to <a href="../../topics/throughput/index.html">Throughput</a> for throughput, <a href="../../topics/p99-latency/index.html">P99 latency</a> and <a href="../../topics/tail-latency/index.html">Tail latency</a> for percentiles and the tail, and <a href="../../topics/latency-budgets-and-critical-path-analysis/index.html">Latency budgets and critical-path analysis</a> to allocate time across a critical path. Little’s Law and practical queueing theory <span class="muted">(not yet written)</span> goes deeper into queueing, and Connection establishment, keep-alive, and draining <span class="muted">(not yet written)</span> goes deeper into connections.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/throughput/index.html">Throughput</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

@@ -1,0 +1,16 @@
+---
+title: "Request states and where latency accumulates"
+---
+stateDiagram-v2
+    [*] --> Connecting: new connection, 1 to 3 RTT
+    [*] --> Sending: reused connection
+    Connecting --> Sending
+    Sending --> Queued: arrives at server
+    Queued --> Processing: worker becomes free
+    Processing --> AwaitingDependency: downstream call
+    AwaitingDependency --> Processing: reply received
+    Processing --> Responding
+    Responding --> [*]: last byte received
+    Queued --> TimedOut: deadline passes
+    AwaitingDependency --> TimedOut: deadline passes
+    TimedOut --> [*]

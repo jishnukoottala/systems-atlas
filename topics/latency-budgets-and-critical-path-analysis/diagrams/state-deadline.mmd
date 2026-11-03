@@ -1,0 +1,14 @@
+---
+title: "Remaining budget as a request moves along the path"
+---
+stateDiagram-v2
+    [*] --> BudgetFull: request received
+    BudgetFull --> Spending: step begins
+    Spending --> BudgetRemains: step finished, time left
+    BudgetRemains --> Spending: next step begins
+    BudgetRemains --> Degraded: too little left for optional step
+    Degraded --> Spending: required step continues
+    Spending --> FailedFast: deadline reached
+    BudgetRemains --> Done: path complete
+    Done --> [*]
+    FailedFast --> [*]

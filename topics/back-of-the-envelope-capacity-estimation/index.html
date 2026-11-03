@@ -1,0 +1,522 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Back-of-the-envelope capacity estimation | Systems Atlas</title>
+<meta name="description" content="Back-of-the-envelope estimation is quick arithmetic that finds the rough size of a system, within about a factor of two to ten, using stated assumptions and rou">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="A004">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Back-of-the-envelope capacity estimation</h1>
+<p class="meta-line">A004 · Foundational · about 1.3 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>Back-of-the-envelope estimation is quick arithmetic that finds the rough size of a system, within about a factor of two to ten, using stated assumptions and round numbers. Its purpose is to rule designs in or out before anyone builds them.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>The first useful question about any design is whether it can work at all. A five-minute calculation can show that a single database is plenty, saving months of premature sharding, or that a proposed cache needs 40 TB of memory, killing a bad idea early. Knowing rough magnitudes also protects you in reviews: a wrong number in a design document usually gets noticed by the person who has done this arithmetic before. In interviews, it is what connects requirements to architecture. It's not about precision. It's about knowing which order of magnitude you are in, and which assumption matters.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a></p><h3 id="study-time">Study time</h3><p>About 1.3 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p>Storage, bandwidth, memory, and IOPS calculations <span class="muted">(not yet written)</span>, Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>, <a href="../../topics/throughput/index.html">Throughput</a>, <a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Convert daily activity into rates, peaks, and storage, with units at each step.</li><li>Keep key reference numbers in memory: seconds per day, latency scales, and transfer rates.</li><li>Size servers, memory, storage, and bandwidth, including headroom and failure capacity.</li><li>Check an estimate with a second method and spot unit errors.</li><li>Use an estimate to reject or accept a design.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A team proposes a URL shortener with a Cassandra cluster, a Kafka pipeline, and a regional cache tier, estimated at 40 servers across three regions. Before approving it, a reviewer takes five minutes. With 100 million daily users, 0.1 creates and 10 redirects each per day, the system does 116 writes per second and 11,574 reads per second on average. At a 3 times peak, that's 347 writes and 34,722 reads per second. Each record is 500 bytes, so 5 years at 3 replicas is 27.4 TB, and with a 90% cache hit ratio, the database sees 3,472 reads per second.</p>
+<p>This shows that the writes are small. A single modern relational primary can plausibly carry 347 writes per second, 27 TB fits a handful of shards, and the read load falls mostly on a cache. So the hard problem is global read latency, not write throughput, and Kafka isn't needed for the core path. The design shrinks by half. An estimate didn't prove anything, but it directed the discussion at the right problem. All figures are from this lesson's example.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Think about how a contractor sizes a job. They walk through a house and say &quot;about 200 square meters, two weeks, and roughly a truckload of plaster&quot;. That's not a quote, but it's accurate enough to know whether the budget is viable and if a single van will do.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Houses don't grow by 8% per month, and plaster doesn't have a heavy-tailed size distribution. Software's bad cases can also dominate: an average request may be cheap while 1% are hundreds of times as costly. So a software estimate must cover peak, skew, and failure, which is more than just volume. Unlike a contractor, you can also measure later at low cost, so replace estimates with measurements as soon as you can.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> users, actions, requests, objects, bytes, servers.</li><li><strong>State:</strong> the assumptions list, and the current estimate.</li><li><strong>Flow:</strong> users to actions per day, to mean rate, to peak rate, then to servers, memory, storage, and bandwidth.</li><li><strong>Invariant 1:</strong> every number has a unit, and units cancel correctly.</li><li><strong>Invariant 2:</strong> every assumption is stated, so another person can change it.</li><li><strong>Invariant 3:</strong> every answer drives a decision. If it doesn't change anything, don't calculate it.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Quantity</th><th scope="col">Useful round value</th></tr></thead><tbody><tr><td>Seconds per day</td><td>86,400, or about 100,000 for quick math</td></tr><tr><td>Seconds per year</td><td>About 31.5 million</td></tr><tr><td>1 million requests per day</td><td>About 12 per second</td></tr><tr><td>1 billion requests per day</td><td>About 12,000 per second</td></tr><tr><td>1 Gbit/s</td><td>125 MB/s</td></tr><tr><td>1 TB over 1 Gbit/s</td><td>About 2.2 hours</td></tr><tr><td>1 PB over 10 Gbit/s</td><td>About 9.3 days</td></tr><tr><td>Same-datacenter round trip</td><td>Around 0.5 ms</td></tr><tr><td>Cross-continent round trip</td><td>100 to 200 ms</td></tr></tbody></table></div>
+<p>Treat the capacity of a server as something to measure. Illustrative working figures: a stateless API server may handle hundreds to thousands of requests per second, a relational primary thousands of simple writes per second, and an in-memory cache hundreds of thousands of operations per second. These vary enormously, so they are starting points only.</p>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>Every estimate is a chain of multiplications, in which units cancel like fractions. Users × actions per user per day gives actions per day. Divide by seconds per day, and you get actions per second. Multiply by bytes per action to get bytes per second. If the units at the end aren't what you wanted, there's an error. This cancellation check is the single most powerful error catcher. The TypeScript example turns it into compile-time enforcement.</p>
+<p>Errors in a chain of multiplied factors combine, but not as badly as you'd fear: if each of five factors might be off by a factor of 1.5 in random directions, the product is usually within a factor of about 2 to 3. So rough estimates can be surprisingly useful. However, they fall apart with one badly wrong factor, such as a missed fan-out of 30 or a mistaken 10 times in a data size. So look for what dominates, and take the time to get that one right.</p>
+<p>Peak, not mean, determines capacity. Storage depends on total writes and retention, and on replication. Memory usually depends on the working set. Bandwidth depends on peak and size. Each resource has its own driver, so one number never sizes a whole system. See Storage, bandwidth, memory, and IOPS calculations <span class="muted">(not yet written)</span>.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p>For the URL shortener:</p>
+<ul><li>Mean writes = 100,000,000 × 0.1 ÷ 86,400 = 115.7 per second.</li><li>Mean reads = 100,000,000 × 10 ÷ 86,400 = 11,574 per second.</li><li>Peak = mean × 3: 347 writes and 34,722 reads per second.</li><li>Daily data = 10,000,000 × 500 B = 5 GB.</li><li>Raw = 5 GB × 365 × 5 = 9.1 TB. With replication = 27.4 TB.</li><li>Peak egress = 34,722 × 500 B × 8 = 139 Mbit/s.</li><li>Cache = 1,000,000,000 reads per day × 0.2 × 500 B = 100 GB.</li></ul>
+<p><strong>Dimensional check:</strong> (req/day) ÷ (s/day) = req/s. (req/s) × (B/req) × (bit/B) = bit/s.</p>
+<p><strong>Sanity check by a second route:</strong> 27.4 TB ÷ 3 replicas ÷ 500 B = 18.25 billion records, and 100,000,000 × 0.1 × 365 × 5 = 18.25 billion. They agree.</p>
+<h3 id="complexity">Complexity</h3>
+<p>An estimate costs minutes. Its calculation grows linearly with the number of factors. The Python tool is O(s) for s steps. Estimation's real complexity is in the interactions: the cost of adding one more assumption is small, but each makes the result harder to check. Keep to the five or so factors that dominate.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>State the question: what decision is this for?</li><li>List assumptions with round numbers, and mark the ones you are unsure of.</li><li>Compute mean rates by operation, then peak.</li><li>Apply amplification: fan-out, replication, and cache hit ratios.</li><li>Compute storage from writes, size, and retention, then replication and overhead.</li><li>Compute bandwidth and memory.</li><li>Convert to servers using measured or stated per-server capacity, then add headroom and failure capacity.</li><li>Check with a second route, and read the results for what they imply about the design.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-estimate"><figcaption>Life of an estimate from guess to measurement</figcaption><pre class="mermaid" role="img" aria-label="State diagram. An estimate starts as a rough guess, gets reviewed and challenged, is used to choose a design, is then compared with load-test numbers, and is finally replaced by production measurement, which feeds later estimates.">stateDiagram-v2
+    [*] --&gt; Rough: assumptions stated
+    Rough --&gt; Reviewed: second route and peer check
+    Reviewed --&gt; Rough: assumption challenged
+    Reviewed --&gt; Used: drives a design decision
+    Used --&gt; Tested: load test supplies per-server numbers
+    Tested --&gt; Measured: production traffic replaces estimates
+    Measured --&gt; Rough: next feature or growth estimate</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. An estimate starts as a rough guess, gets reviewed and challenged, is used to choose a design, is then compared with load-test numbers, and is finally replaced by production measurement, which feeds later estimates.</p></figure>
+<p>An estimate has value when it is replaced. Teams that keep a launch-time estimate in a capacity plan long after launch are effectively ignoring data they already have.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Convert rates into concurrency, using Little's Law: in-flight = rate × duration. 34,722 reads per second at 20 ms means 694 concurrent requests. So 100 worker threads per server implies at least 7 servers for concurrency, however little CPU they use. Connections, threads, and memory per connection may each be the limit before CPU. See Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Consistency requirements multiply costs. Three synchronous replicas turn one logical write into three physical writes, and quorums add latency. Ordering requirements restrict parallelism, which changes how many workers a queue needs. Include these multipliers in the estimate.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>The person who proposes a design owns its estimate. Each team should own the per-server numbers for its tier, based on load tests. Product owns growth assumptions. Sharing the assumptions along with the result lets anyone challenge the part that they know best.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: how an estimate connects requirements and design</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Requirements, product forecasts, and measured traffic feed the estimate. The estimate outputs rates, storage, memory, bandwidth, and server counts. These feed a design decision, cost estimate, and load test targets. Load test results return as per-server capacity.">flowchart LR
+    R[&quot;Requirements: users, retention&quot;] --&gt; E[&quot;Estimate: assumptions visible&quot;]
+    P[&quot;Product forecast&quot;] --&gt; E
+    T[&quot;Traffic measurements&quot;] --&gt; E
+    E --&gt; O[&quot;Rates, storage, memory, bandwidth, servers&quot;]
+    O --&gt; D[&quot;Design decision&quot;]
+    O --&gt; C[&quot;Cost estimate&quot;]
+    O --&gt; L[&quot;Load test targets&quot;]
+    L --&gt;|&quot;measured per-server capacity&quot;| E</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Requirements, product forecasts, and measured traffic feed the estimate. The estimate outputs rates, storage, memory, bandwidth, and server counts. These feed a design decision, cost estimate, and load test targets. Load test results return as per-server capacity.</p></figure>
+<p>The return arrow from load tests improves the estimate's weakest input. On a first pass, per-server capacity is a guess, and it's what most often proves wrong. Early, cheap benchmarks of the riskiest component pay off quickly.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the estimator and unit-safe library</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. A client posts a JSON workload to FastAPI, which validates with Pydantic and runs the estimate function, returning steps with formulas and units. Separately, the TypeScript library uses branded types so unit mismatches fail at compile time.">flowchart LR
+    C[&quot;curl or CI job&quot;] --&gt;|&quot;HTTP POST /estimate, JSON&quot;| F[&quot;FastAPI route&quot;]
+    F --&gt; V[&quot;Pydantic Workload: validation&quot;]
+    V --&gt; ES[&quot;estimate function&quot;]
+    ES --&gt; ST[&quot;Steps: name, formula, value, unit&quot;]
+    ST --&gt;|&quot;JSON&quot;| C
+    TSC[&quot;TypeScript compiler&quot;] --&gt; BR[&quot;Branded types: Bytes, PerSecond, BitsPerSecond&quot;]
+    BR --&gt;|&quot;mismatch is a compile error&quot;| X[&quot;Unit errors rejected before run&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. A client posts a JSON workload to FastAPI, which validates with Pydantic and runs the estimate function, returning steps with formulas and units. Separately, the TypeScript library uses branded types so unit mismatches fail at compile time.</p></figure>
+<p>Returning every step means that a reviewer can find the wrong line and not just distrust the bottom line. In a design review, that's the difference between an argument and a correction.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: estimating during a design interview</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. A candidate states users and action assumptions, and the interviewer confirms. The candidate computes rates and storage aloud, then states the implication: reads dominate and storage fits a few shards. The interviewer changes an assumption and the candidate adjusts.">sequenceDiagram
+    participant C as Candidate
+    participant I as Interviewer
+    C-&gt;&gt;I: I'll assume 100M daily users, 10 reads, 0.1 writes
+    I--&gt;&gt;C: Reasonable
+    C-&gt;&gt;C: 1B reads per day is about 12K per second, 36K at peak
+    C-&gt;&gt;C: 10M writes per day times 500 B is 5 GB per day
+    C-&gt;&gt;I: So 27 TB in 5 years with 3 replicas. Reads dominate
+    C-&gt;&gt;I: A cache matters most. A few shards are enough
+    I--&gt;&gt;C: What if links were 100x more popular?
+    C-&gt;&gt;I: Reads become 3.6M per second, and the cache becomes the bottleneck</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. A candidate states users and action assumptions, and the interviewer confirms. The candidate computes rates and storage aloud, then states the implication: reads dominate and storage fits a few shards. The interviewer changes an assumption and the candidate adjusts.</p></figure>
+<p>The important message is the fifth one: &quot;so&quot;. A number that doesn't change the design isn't worth saying out loud. The last exchange shows why stated assumptions matter: they let you recompute in seconds rather than starting over.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: a unit error reaches production</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. An estimate treats 1 Gbit/s as 1 GB/s. A backfill is scheduled for 3 hours but needs 24 hours and saturates the network. Production traffic is hurt. A second-route check or unit-typed calculation would catch it at review.">flowchart TD
+    A[&quot;Design says link is 10 GB/s, but it is 10 Gbit/s&quot;] --&gt; B[&quot;Backfill planned: 100 TB in 3 hours&quot;]
+    B --&gt; C[&quot;Actual time at full link: 22 hours&quot;]
+    C --&gt; D[&quot;Backfill saturates link during peak&quot;]
+    D --&gt; E[&quot;Production latency rises&quot;]
+    A -.-&gt;|&quot;caught by unit check at review&quot;| F[&quot;Throttle and schedule over several nights&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. An estimate treats 1 Gbit/s as 1 GB/s. A backfill is scheduled for 3 hours but needs 24 hours and saturates the network. Production traffic is hurt. A second-route check or unit-typed calculation would catch it at review.</p></figure>
+<p>A factor of 8 went unnoticed because both numbers looked plausible. Calculation: 100 TB ÷ 1.25 GB/s = 80,000 s = 22.2 hours, compared with 2.8 hours under the wrong unit. The dashed route is the five-minute check that would have prevented this.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>Very cheap compared with building or testing.</li><li>Exposes the assumption that matters most.</li><li>Gives a shared language for reviewing designs.</li><li>Works before any traffic exists.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Can give false confidence if an assumption is badly wrong.</li><li>Ignores non-linear effects such as contention and tail behavior.</li><li>Round numbers can hide important details in cost-sensitive designs.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>Spreadsheet model:</strong> better for sensitivity analysis. See <a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a>.</li><li><strong>Load test:</strong> real numbers, higher cost. See Load, stress, spike, and soak testing <span class="muted">(not yet written)</span>.</li><li><strong>Queueing simulation:</strong> captures variance. See Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>.</li><li><strong>Prototype benchmark:</strong> tests one risky number directly, and it's often the best next step.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>At the beginning of any design, in reviews, in interviews, and any time someone cites a number that seems surprising.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Don't use an estimate as a final capacity plan for an important launch, and don't use one to compare designs that differ by 20%, since that's inside its error. When production data exists, use it.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>A load test contradicts per-server assumptions.</li><li>Traffic mix or object sizes change.</li><li>A result lands near a design threshold, in which case measure rather than estimate.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>From the scenario: 100M daily users, 0.1 writes and 10 reads each, 500-byte objects, a peak-to-mean ratio of 3, 5-year retention, 3 replicas, 90% hit ratio, a 20% working set, and 5,000 requests per second per server. Every value here is an assumption.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Peak total (req/s) = (reads + writes per user per day) × DAU ÷ 86,400 s × peak ratio.</li><li>Servers = peak total ÷ per-server capacity.</li><li>Stored bytes = writes per day × bytes × 365 × years × replicas.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Peak total: 34,722 + 347 = 35,069 requests per second.</li><li>At capacity: 35,069 ÷ 5,000 = 7.01 servers.</li><li>With 30% headroom: 7.01 ÷ 0.7 = 10.02.</li><li>Surviving one of three zones: 10.02 × 3 ÷ 2 = 15.03, rounded up to 16.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Thirty percent is a placeholder for forecast error and deployment churn. In practice, derive headroom from forecast accuracy and the latency target, because a stricter target means lower safe utilization. See <a href="../../topics/latency/index.html">Latency</a>.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>Losing one of three zones leaves two-thirds of capacity, so scale by 3 ÷ 2. For a cache, also ask what happens if the cache fails: a hit ratio falling from 90% to 0% takes database reads from 3,472 to 34,722 per second, ten times more. The cache is therefore load-bearing, and you need a plan for this. See Cache stampedes and request coalescing <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-bits-and-bytes-confused">Bits and bytes confused</h3><dl><dt>Trigger</dt><dd>Bandwidth in bits gets compared with data sizes in bytes.</dd><dt>Symptoms</dt><dd>Transfers take 8 times longer than planned, and links saturate.</dd><dt>Blast radius</dt><dd>Migrations, backups, and traffic sharing the link.</dd><dt>Detection</dt><dd>Write units on every line and compare with a real transfer.</dd><dt>Mitigation</dt><dd>Throttle the transfer and reschedule it.</dd><dt>Recovery</dt><dd>Redo the plan using correct numbers.</dd><dt>Prevention</dt><dd>Use unit-typed calculations and peer review.</dd></dl></div>
+<div class="failure"><h3 id="failure-mean-used-in-place-of-peak">Mean used in place of peak</h3><dl><dt>Trigger</dt><dd>Servers are sized by daily average.</dd><dt>Symptoms</dt><dd>Saturation at predictable daily peaks.</dd><dt>Blast radius</dt><dd>Whole service during peak hours.</dd><dt>Detection</dt><dd>Compare with hourly traffic and measured peak-to-mean ratio.</dd><dt>Mitigation</dt><dd>Scale up and defer non-critical work.</dd><dt>Recovery</dt><dd>Re-plan using measured peak.</dd><dt>Prevention</dt><dd>Require a stated peak ratio. See <a href="../../topics/workload-characterization-and-traffic-modeling/index.html">Workload characterization and traffic modeling</a>.</dd></dl></div>
+<div class="failure"><h3 id="failure-hidden-multiplier-ignored">Hidden multiplier ignored</h3><dl><dt>Trigger</dt><dd>Fan-out, replication, retries, or indexes are left out.</dd><dt>Symptoms</dt><dd>Actual load or storage is many times the estimate.</dd><dt>Blast radius</dt><dd>Dependencies receiving the extra load, and budget.</dd><dt>Detection</dt><dd>Compare traced calls per request and actual storage with the plan.</dd><dt>Mitigation</dt><dd>Add capacity and reduce fan-out where possible.</dd><dt>Recovery</dt><dd>Correct the model and re-derive plans.</dd><dt>Prevention</dt><dd>Include a multiplier checklist in each estimate.</dd></dl></div>
+<div class="failure"><h3 id="failure-per-server-capacity-was-a-guess">Per-server capacity was a guess</h3><dl><dt>Trigger</dt><dd>A blog figure or default stands in for your workload.</dd><dt>Symptoms</dt><dd>The system saturates far below the expected rate.</dd><dt>Blast radius</dt><dd>Launch, and every plan using that number.</dd><dt>Detection</dt><dd>Benchmark the riskiest component early.</dd><dt>Mitigation</dt><dd>Limit launch traffic.</dd><dt>Recovery</dt><dd>Measure and resize.</dd><dt>Prevention</dt><dd>Label guesses, and replace them with load-test results. See Load, stress, spike, and soak testing <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-false-precision">False precision</h3><dl><dt>Trigger</dt><dd>A rough estimate gets reported as &quot;4,387 servers&quot; and turned into a commitment.</dd><dt>Symptoms</dt><dd>Long-term budgets built on unverified assumptions.</dd><dt>Blast radius</dt><dd>Budget and credibility.</dd><dt>Detection</dt><dd>Ask for the range and for the assumptions behind it.</dd><dt>Mitigation</dt><dd>Restate it as a range, with named uncertainties.</dd><dt>Recovery</dt><dd>Refine it using measurements before committing.</dd><dt>Prevention</dt><dd>Round results, and always give low and high cases.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Estimates usually cover only legitimate traffic. Add abuse: bots, scraping, and credential stuffing can dominate some systems. A URL shortener can be used to host phishing links, so write volume may be driven by abusers. Estimate the cost of a denial-of-service attack on your most expensive route too. See DDoS protection <span class="muted">(not yet written)</span>.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Security controls have a cost that belongs in the estimate: a web application firewall adds a hop, TLS termination uses CPU, and audit logs add storage. Estimate per boundary crossing.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Authorization checks multiply traffic to identity services. At 35,000 requests per second, one uncached check per request means 35,000 requests per second to the authorization service. Estimate that explicitly, along with its cache hit ratio.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>Estimates based on average tenants fail when one tenant is 1,000 times larger. Estimate the largest tenant separately, and decide whether it gets dedicated capacity. See Multi-tenancy architecture models <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Retention drives storage, and retention also has a legal side. Don't assume that keeping everything is free or allowed. Deletion, encryption overhead, and regional duplication for residency can all change the numbers. See Data classification, retention, and deletion <span class="muted">(not yet written)</span>.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Add a line for abuse in each estimate. For example, assume 10% extra traffic from automated clients, then compare that with the rate limits you plan to enforce. Limits themselves need capacity, as counters must be stored and checked.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>After launch, compare each estimated number with its measured counterpart: requests per second by operation, peak-to-mean ratio, object size, storage growth, cache hit ratio, and per-server saturation.</p>
+<h3 id="logs">Logs</h3>
+<p>Keep the estimate with the design record, including its assumptions. Log object sizes, or sample them, so that average and tail sizes can be measured.</p>
+<h3 id="traces">Traces</h3>
+<p>Use traces to measure the fan-out multiplier that estimates usually have to guess. Track it over time by route.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>An &quot;estimate versus actual&quot; view shows predicted and measured values, the ratio between them, and the date. This builds organizational calibration, and makes bad assumptions easy to find.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Send a ticket if actual load exceeds the plan by 25%, or if storage growth would exhaust capacity within your procurement lead time. Forecast-based alerts should not page anyone.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>Capacity forecasts for tier-1 services are within 25% of actual at 3 months.</li><li>At least 30 days of notice before forecast storage exhaustion.</li><li>Peak utilization of the bottleneck resource stays under the planned level for 99% of days.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>If actuals exceed the estimate: find which assumption broke, check for abuse or retries, adjust capacity, and update the model. If actuals fall far short, consider scaling down and record why.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>Python exposes the estimator through FastAPI, because a shared service or CI job can use it directly, and it also offers a command-line report. TypeScript takes a different angle: branded types prevent unit errors at compile time, a strength Python's runtime approach doesn't have.</p>
+<h3 id="data-structures">Data structures</h3>
+<p><code>Workload</code> validates inputs, and <code>Step</code> records name, formula, value, and unit. A list of steps is the main output, since showing work is the point. In TypeScript, <code>Bytes</code>, <code>PerSecond</code>, and <code>BitsPerSecond</code> are numbers at runtime with a compile-time brand, so they have no overhead.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>POST /estimate</code> accepts a workload and returns <code>{ steps, summary }</code>. <code>GET /healthz</code> reports health. <code>python -m app.main</code> prints a table for the sample. TypeScript exports constructors such as <code>mb</code> and <code>gbps</code>, plus conversions such as <code>transferTime</code>.</p>
+<h3 id="error-handling">Error handling</h3>
+<p>Pydantic turns invalid values into HTTP 422 with field details, and a validator rejects workloads with no traffic. TypeScript rejects negative values at runtime with <code>EstimateError</code>, and rejects unit mix-ups at compile time. A test uses <code>@ts-expect-error</code>, so <code>tsc</code> fails if the type protection ever stops working.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p><code>estimate</code> is a pure function that shares no state, so FastAPI can serve it concurrently without locks. It is CPU-only and quick, and <code>def</code> routes run in a thread pool, so it doesn't block the event loop.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>The model has one storage class and one server tier, with no write amplification, index overhead, or compression. Peak ratio is one number for all operations. Per-server capacity is an input, and the tool can't validate it.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Add authentication if exposed, include per-tier capacity and overhead factors, run low, base, and high cases, version the assumptions, and compare with actual metrics automatically.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Unit-safe capacity arithmetic. Most estimation errors are unit errors, such as bits for bytes or
+// per-day for per-second. Branded types make those mistakes compile errors, at zero runtime cost.
+import { fileURLToPath } from 'node:url';
+
+declare const brand: unique symbol;
+type Brand&lt;T, B extends string&gt; = T &amp; { readonly [brand]: B };
+
+export type Bytes = Brand&lt;number, 'bytes'&gt;;
+export type BitsPerSecond = Brand&lt;number, 'bits/s'&gt;;
+export type BytesPerSecond = Brand&lt;number, 'bytes/s'&gt;;
+export type PerSecond = Brand&lt;number, 'per-second'&gt;;
+export type PerDay = Brand&lt;number, 'per-day'&gt;;
+export type Seconds = Brand&lt;number, 'seconds'&gt;;
+
+export class EstimateError extends Error {}
+
+const positive = (n: number, label: string): number =&gt; {
+  if (!Number.isFinite(n) || n &lt; 0) throw new EstimateError(`${label} must be a non-negative number, got ${n}.`);
+  return n;
+};
+
+export const bytes = (n: number): Bytes =&gt; positive(n, 'bytes') as Bytes;
+export const kb = (n: number): Bytes =&gt; bytes(n * 1_000);
+export const mb = (n: number): Bytes =&gt; bytes(n * 1_000_000);
+export const gb = (n: number): Bytes =&gt; bytes(n * 1_000_000_000);
+export const seconds = (n: number): Seconds =&gt; positive(n, 'seconds') as Seconds;
+export const perDay = (n: number): PerDay =&gt; positive(n, 'rate') as PerDay;
+export const perSecond = (n: number): PerSecond =&gt; positive(n, 'rate') as PerSecond;
+export const gbps = (n: number): BitsPerSecond =&gt; (positive(n, 'bandwidth') * 1e9) as BitsPerSecond;
+
+export const toPerSecond = (r: PerDay): PerSecond =&gt; perSecond(r / 86_400);
+export const toBytesPerSecond = (b: BitsPerSecond): BytesPerSecond =&gt; (b / 8) as BytesPerSecond;
+export const throughput = (rate: PerSecond, size: Bytes): BytesPerSecond =&gt; (rate * size) as BytesPerSecond;
+export const transferTime = (size: Bytes, link: BitsPerSecond): Seconds =&gt; seconds(size / toBytesPerSecond(link));
+export const amountOver = (rate: BytesPerSecond, t: Seconds): Bytes =&gt; bytes(rate * t);
+
+export function format(n: number, unit: string): string {
+  const scales: Array&lt;[number, string]&gt; = [[1e15, 'P'], [1e12, 'T'], [1e9, 'G'], [1e6, 'M'], [1e3, 'k']];
+  for (const [scale, prefix] of scales) if (n &gt;= scale) return `${(n / scale).toFixed(1)} ${prefix}${unit}`;
+  return `${n.toFixed(1)} ${unit}`;
+}
+
+// The classic number sense check: transfer times for common cases.
+export function report(): Record&lt;string, string&gt; {
+  const uploads = toPerSecond(perDay(500_000_000));
+  const flow = throughput(uploads, mb(2));
+  return {
+    'uploads per second': format(uploads, '/s'),
+    'upload bandwidth': format(flow * 8, 'bit/s'),
+    'storage per year': format(amountOver(flow, seconds(365 * 86_400)), 'B'),
+    '1 TB over 1 Gbit/s': `${(transferTime(gb(1_000), gbps(1)) / 3_600).toFixed(1)} hours`,
+    '1 PB over 10 Gbit/s': `${(transferTime(gb(1_000_000), gbps(10)) / 86_400).toFixed(1)} days`,
+  };
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  for (const [k, v] of Object.entries(report())) console.log(JSON.stringify({ item: k, value: v }));
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;FastAPI capacity estimator. It returns every intermediate step with units, so reviewers can check
+the reasoning and not only the answer. Run the module directly for a command-line estimate.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+
+from fastapi import FastAPI
+from pydantic import BaseModel, Field, model_validator
+
+log = logging.getLogger(&quot;estimator&quot;)
+SECONDS_PER_DAY = 86_400
+DAYS_PER_YEAR = 365
+
+
+class Workload(BaseModel):
+    daily_active_users: int = Field(gt=0)
+    writes_per_user_per_day: float = Field(ge=0)
+    reads_per_user_per_day: float = Field(ge=0)
+    object_size_bytes: int = Field(gt=0)
+    metadata_bytes_per_object: int = Field(default=0, ge=0)
+    response_size_bytes: int = Field(gt=0)
+    peak_to_mean: float = Field(default=3.0, ge=1)
+    retention_years: float = Field(default=5.0, gt=0)
+    replication_factor: int = Field(default=3, ge=1)
+    cache_hit_ratio: float = Field(default=0.0, ge=0, lt=1)
+    cache_working_set_fraction: float = Field(default=0.2, gt=0, le=1)
+    rps_per_server: float = Field(default=1_000, gt=0)
+    headroom: float = Field(default=0.3, ge=0, lt=1)
+    zones: int = Field(default=3, ge=2)
+
+    @model_validator(mode=&quot;after&quot;)
+    def some_traffic(self) -&gt; &quot;Workload&quot;:
+        if self.writes_per_user_per_day + self.reads_per_user_per_day == 0:
+            raise ValueError(&quot;workload has no traffic&quot;)
+        return self
+
+
+class Step(BaseModel):
+    name: str
+    formula: str
+    value: float
+    unit: str
+
+
+class Estimate(BaseModel):
+    steps: list[Step]
+    summary: dict[str, float]
+
+
+def human(bytes_: float) -&gt; str:
+    for unit in (&quot;B&quot;, &quot;KB&quot;, &quot;MB&quot;, &quot;GB&quot;, &quot;TB&quot;, &quot;PB&quot;, &quot;EB&quot;):
+        if bytes_ &lt; 1_000:
+            return f&quot;{bytes_:.1f} {unit}&quot;
+        bytes_ /= 1_000
+    return f&quot;{bytes_:.1f} ZB&quot;
+
+
+def estimate(w: Workload) -&gt; Estimate:
+    steps: list[Step] = []
+
+    def step(name: str, formula: str, value: float, unit: str) -&gt; float:
+        steps.append(Step(name=name, formula=formula, value=round(value, 3), unit=unit))
+        return value
+
+    writes = step(&quot;mean writes&quot;, &quot;DAU x writes per day / 86,400&quot;, w.daily_active_users * w.writes_per_user_per_day / SECONDS_PER_DAY, &quot;req/s&quot;)
+    reads = step(&quot;mean reads&quot;, &quot;DAU x reads per day / 86,400&quot;, w.daily_active_users * w.reads_per_user_per_day / SECONDS_PER_DAY, &quot;req/s&quot;)
+    peak_writes = step(&quot;peak writes&quot;, &quot;mean writes x peak-to-mean&quot;, writes * w.peak_to_mean, &quot;req/s&quot;)
+    peak_reads = step(&quot;peak reads&quot;, &quot;mean reads x peak-to-mean&quot;, reads * w.peak_to_mean, &quot;req/s&quot;)
+    db_reads = step(&quot;peak database reads&quot;, &quot;peak reads x (1 - hit ratio)&quot;, peak_reads * (1 - w.cache_hit_ratio), &quot;req/s&quot;)
+    per_object = w.object_size_bytes + w.metadata_bytes_per_object
+    daily = step(&quot;new data per day&quot;, &quot;mean writes x 86,400 x bytes per object&quot;, writes * SECONDS_PER_DAY * per_object, &quot;B&quot;)
+    raw = step(&quot;raw storage&quot;, &quot;daily x 365 x years&quot;, daily * DAYS_PER_YEAR * w.retention_years, &quot;B&quot;)
+    stored = step(&quot;replicated storage&quot;, &quot;raw x replication factor&quot;, raw * w.replication_factor, &quot;B&quot;)
+    egress = step(&quot;peak egress&quot;, &quot;peak reads x response bytes x 8&quot;, peak_reads * w.response_size_bytes * 8, &quot;bit/s&quot;)
+    ingress = step(&quot;peak ingress&quot;, &quot;peak writes x object bytes x 8&quot;, peak_writes * w.object_size_bytes * 8, &quot;bit/s&quot;)
+    unique_daily = reads * SECONDS_PER_DAY * w.cache_working_set_fraction
+    cache = step(&quot;cache memory&quot;, &quot;daily reads x working-set fraction x bytes per object&quot;, unique_daily * per_object, &quot;B&quot;)
+    exact = step(&quot;servers at capacity&quot;, &quot;peak total / rps per server&quot;, (peak_reads + peak_writes) / w.rps_per_server, &quot;servers&quot;)
+    with_headroom = step(&quot;with headroom&quot;, &quot;servers / (1 - headroom)&quot;, exact / (1 - w.headroom), &quot;servers&quot;)
+    failure = step(&quot;surviving one zone&quot;, &quot;servers x zones / (zones - 1)&quot;, with_headroom * w.zones / (w.zones - 1), &quot;servers&quot;)
+
+    return Estimate(steps=steps, summary={
+        &quot;peak_total_rps&quot;: round(peak_reads + peak_writes, 1),
+        &quot;peak_db_reads_rps&quot;: round(db_reads, 1),
+        &quot;stored_bytes&quot;: stored,
+        &quot;egress_gbps&quot;: round(egress / 1e9, 2),
+        &quot;ingress_gbps&quot;: round(ingress / 1e9, 3),
+        &quot;cache_bytes&quot;: cache,
+        &quot;servers&quot;: math.ceil(failure),
+    })
+
+
+app = FastAPI(title=&quot;Capacity estimator&quot;)
+
+
+@app.get(&quot;/healthz&quot;)
+def healthz() -&gt; dict[str, str]:
+    return {&quot;status&quot;: &quot;ok&quot;}
+
+
+@app.post(&quot;/estimate&quot;)
+def post_estimate(workload: Workload) -&gt; Estimate:
+    result = estimate(workload)
+    log.info(json.dumps({&quot;msg&quot;: &quot;estimate&quot;, &quot;servers&quot;: result.summary[&quot;servers&quot;]}))
+    return result
+
+
+URL_SHORTENER = Workload(
+    daily_active_users=100_000_000,
+    writes_per_user_per_day=0.1,
+    reads_per_user_per_day=10,
+    object_size_bytes=500,
+    response_size_bytes=500,
+    peak_to_mean=3,
+    retention_years=5,
+    replication_factor=3,
+    cache_hit_ratio=0.9,
+    cache_working_set_fraction=0.2,
+    rps_per_server=5_000,
+)
+
+
+def main() -&gt; int:
+    result = estimate(URL_SHORTENER)
+    for s in result.steps:
+        shown = human(s.value) if s.unit == &quot;B&quot; else f&quot;{s.value:,.1f} {s.unit}&quot;
+        print(f&quot;{s.name:&lt;24} {shown:&gt;18}    {s.formula}&quot;)
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/back-of-the-envelope-capacity-estimation/examples/python
+uv sync --quiet</code></pre>
+<h3 id="run">Run</h3>
+<p>Print the sample estimate:</p>
+<pre class="code"><code class="language-bash">uv run python -m app.main</code></pre>
+<p>Start the API, then in a second terminal try a change: multiply users tenfold, and compare what changes:</p>
+<pre class="code"><code class="language-bash">uv run uvicorn app.main:app --port 8000</code></pre>
+<pre class="code"><code class="language-bash">curl -s localhost:8000/estimate -H 'content-type: application/json' -d '{&quot;daily_active_users&quot;:1000000000,&quot;writes_per_user_per_day&quot;:0.1,&quot;reads_per_user_per_day&quot;:10,&quot;object_size_bytes&quot;:500,&quot;response_size_bytes&quot;:500,&quot;cache_hit_ratio&quot;:0.9,&quot;rps_per_server&quot;:5000}' | jq .summary</code></pre>
+<p>See how invalid input is reported:</p>
+<pre class="code"><code class="language-bash">curl -s localhost:8000/estimate -H 'content-type: application/json' -d '{&quot;daily_active_users&quot;:-1}' | jq '.detail[0] | {loc, msg}'</code></pre>
+<p>Run the unit-safe report:</p>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm install --ignore-workspace --silent &amp;&amp; pnpm --silent start</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm run check &amp;&amp; pnpm test</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>The sample report contains these lines, measured on the review date:</p>
+<pre class="code"><code class="language-text">mean writes                     115.7 req/s
+mean reads                   11,574.1 req/s
+peak reads                   34,722.2 req/s
+peak database reads           3,472.2 req/s
+new data per day                     5.0 GB
+replicated storage                  27.4 TB
+cache memory                       100.0 GB
+servers at capacity             7.0 servers
+surviving one zone             15.0 servers</code></pre>
+<p>The TypeScript report prints 5.8 k uploads per second, 92.6 Gbit/s of upload bandwidth, 365 PB per year, 2.2 hours for 1 TB over 1 Gbit/s, and 9.3 days for 1 PB over 10 Gbit/s.</p>
+<p>While writing this lesson, the author's own first test asserted 274 TB instead of 27.4 TB, and the test failed. A tenfold slip like that looks reasonable on paper, which is why every estimate needs a second route.</p>
+<h3 id="cleanup">Cleanup</h3>
+<p>Stop uvicorn with Ctrl-C, then:</p>
+<pre class="code"><code class="language-bash">rm -rf .venv ../typescript/node_modules</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>Address already in use</code>: choose another port with <code>--port</code>.</li><li>422 from the API: read <code>.detail</code>, which names the invalid field.</li><li>If you see a deprecation warning from <code>TestClient</code> during tests, it comes from a dependency and doesn't affect results.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Which resource limits this?</h3><p>A photo service has 10M uploads per day at 2 MB each, 500M views per day at 200 KB each, and keeps everything for 10 years with 3 replicas. Calculate peak upload and view bandwidth at a peak ratio of 3, and total storage. Which is the hardest resource?</p><details class="disclosure"><summary>Hint</summary><p>Work out bytes per second first, then multiply by 8.</p></details><details class="disclosure"><summary>Solution</summary><p>Uploads: 10M × 2 MB = 20 TB per day, or 231 MB/s mean, 694 MB/s peak, or 5.6 Gbit/s. Views: 500M × 200 KB = 100 TB per day, or 1.16 GB/s mean, 3.47 GB/s peak, or 27.8 Gbit/s. Storage: 20 TB × 3,650 × 3 = 219 PB. Storage is the dominant cost and drives the use of tiered object storage. Viewing bandwidth points to a CDN.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Forgetting replication, or using the mean for bandwidth. Treating raw bandwidth as the problem when storage cost dominates.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> Find the errors</h3><p>A design document says: &quot;5M users each send 40 messages per day: 200M per day, which is 2,300 per second. Each is 1 KB, so 2.3 MB/s, so 2.3 Mbit/s of bandwidth. Storage for 2 years: 2.3 MB × 365 × 2 = 1.7 GB.&quot; Find the errors and correct them.</p><details class="disclosure"><summary>Hint</summary><p>Check units on every line. There are at least two errors. Look at the storage formula closely.</p></details><details class="disclosure"><summary>Solution</summary><p>Rate is correct: 200M ÷ 86,400 = 2,315 per second. Throughput of 2.3 MB/s is correct. Bandwidth is wrong: 2.3 MB/s × 8 = 18.5 Mbit/s. Storage is wrong: it multiplied a per-second rate by days. Correct: 200M × 1 KB = 200 GB per day, × 730 days = 146 TB, before replication, or 438 TB with 3 replicas. The error is a factor of about 85,000. Peak is missing also, at 3 times about 55 Mbit/s.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Spotting only the bits-and-bytes error and missing the far larger one in storage. Forgetting that message fan-out and delivery aren't included.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Size a timeline cache</h3><p>A service has 50M daily users, each loading their timeline 20 times per day. A timeline is 800 ids at 8 bytes. Cache timelines for 20% of daily users. Compute cache memory and peak reads at a peak ratio of 4. If each cache node holds 64 GB of usable memory and serves 100,000 reads per second, how many nodes do you need, and which constraint decides?</p><details class="disclosure"><summary>Hint</summary><p>Compute the node count separately for memory and throughput, and then take the larger.</p></details><details class="disclosure"><summary>Solution</summary><p>Timeline size: 800 × 8 B = 6.4 KB. Cached timelines: 10M. Memory: 10M × 6.4 KB = 64 GB, or 1 node. Reads: 50M × 20 = 1B per day, or 11,574 per second mean, 46,296 at peak, or less than 1 node. So 1 node suffices on paper for both. For availability, you'd use at least 3 replicated nodes. Neither memory nor throughput is the deciding constraint: availability is.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Reporting only the math and forgetting availability. Missing that memory overhead makes 64 GB of data not fit in 64 GB exactly.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> Should this be sharded?</h3><p>A SaaS app has 200,000 tenants, a 3 TB relational database that's growing at 40 GB per month, and a peak of 2,000 writes and 15,000 reads per second. The team wants to shard now. Using estimates, argue for or against this, and state which numbers you would measure to confirm.</p><details class="disclosure"><summary>Hint</summary><p>Project storage and load forward over 2 years, compare with what a large single instance plus replicas offers, and consider the migration cost.</p></details><details class="disclosure"><summary>Solution</summary><p>In two years, storage reaches 3 TB + 960 GB ≈ 4 TB, which is within a large single instance's capability. Reads can go to replicas and a cache. Writes at 2,000 per second are plausible on modern hardware, depending on the row size and indexes. So the initial answer is don't shard yet. Measure: write saturation, lock contention, replication lag, largest-tenant share, and vacuum or compaction load. Do prepare: add tenant IDs on all tables so that sharding stays possible later. Re-evaluate when write capacity reaches about 50%.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Stating &quot;sharding is needed at scale&quot; with no numbers. Forgetting the ongoing costs of sharding, like cross-shard queries.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> The backfill that took the site down</h3><p>A backfill rewrites 50 TB over a 10 Gbit/s link shared with production, which peaks at 6 Gbit/s. It was planned as &quot;about 6 hours&quot;. What should the estimate have said? How would you run it safely?</p><details class="disclosure"><summary>Hint</summary><p>10 Gbit/s is 1.25 GB/s, and only the spare capacity is available.</p></details><details class="disclosure"><summary>Solution</summary><p>At full link speed: 50 TB ÷ 1.25 GB/s = 40,000 s, or 11.1 hours. So the planned 6 hours would be impossible even if production were idle. During peak, only 4 Gbit/s (500 MB/s) is free, and with safety at 2 Gbit/s, it takes 50 TB ÷ 250 MB/s = 200,000 s = 55.6 hours. Safe plan: throttle to a rate tied to measured production traffic, run off-peak when possible, add a kill switch, watch latency, and resume from checkpoints. See Online schema changes and large backfills <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Blaming the network. Using full bandwidth with no margin for production, and having no way to pause the job.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<p><a href="https://www.nist.gov/pml/owm/metric-si-prefixes" rel="noopener noreferrer">SI prefixes from NIST</a> and <a href="https://physics.nist.gov/cuu/Units/binary.html" rel="noopener noreferrer">binary prefixes</a> define MB and MiB, a 4.9% difference at mega scale and 12.6% at peta scale. This lesson uses decimal units. Most vendors bill storage in one or the other, so read carefully.</p>
+<h3 id="established-practice">Established practice</h3>
+<p><a href="https://sre.google/workbook/non-abstract-design/" rel="noopener noreferrer">Non-Abstract Large System Design</a>, from <em>The Site Reliability Workbook</em>, 2018, walks through estimating real hardware from requirements. <a href="https://colin-scott.github.io/personal_website/research/interactive_latency.html" rel="noopener noreferrer">Interactive Latency Numbers</a>, maintained by Colin Scott, gives year-adjusted latency estimates, whose later values are extrapolations and not measurements.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Cloud pricing calculators convert estimates to cost, and they're vendor tools, so they don't validate assumptions. Managed services change your unit from servers to quota units, so read how each service defines its capacity unit.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Language models can produce fast estimates, and they also make unit and arithmetic errors that look plausible. Treat any such output as a draft, then check it using a second route. For AI systems, estimate in tokens and GPU time rather than in requests, as these differ greatly by request. This is an observation from current practice, with no established standard.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>Hardware figures shift steadily, particularly for NVMe and network speeds, so memorized numbers from older lists can be off by an order of magnitude. Re-baseline with your own benchmarks.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Round numbers can be misused as commitments, so separate estimates from budgets. Sharing assumptions openly requires a culture where being corrected is normal.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> How do you convert daily users into requests per second?</summary><p><strong>Strong answer.</strong> Daily users × actions per user ÷ 86,400, using about 100,000 for quick math. Then multiply by a peak ratio. 100M users at 10 actions each is 1B per day, or about 12,000 per second mean, and around 36,000 at a 3 times peak.</p>
+<p><strong>Why it is asked.</strong> It's the first step of almost every estimate.</p>
+<p><strong>Weak-answer warning signs.</strong> Stopping at the mean, or being unable to do this without a calculator.</p>
+<p><strong>Follow-up.</strong> What determines the peak ratio?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> How much storage does a service need?</summary><p><strong>Strong answer.</strong> Writes per day × size × retention × replication, plus overhead for indexes. I would state assumptions and check by computing total record count separately. Then I'd decide on tiering if most data is rarely read.</p>
+<p><strong>Why it is asked.</strong> It checks that you remember replication and retention.</p>
+<p><strong>Weak-answer warning signs.</strong> Forgetting replication or indexes.</p>
+<p><strong>Follow-up.</strong> What is a typical index overhead, and how would you find out for your system?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is the difference between Gbit/s and GB/s, and why does it matter?</summary><p><strong>Strong answer.</strong> A byte is 8 bits, so 1 Gbit/s is 125 MB/s. It matters because links are quoted in bits and files in bytes, and confusing them gives an error of 8 times. 1 TB takes 2.2 hours over 1 Gbit/s, not 17 minutes.</p>
+<p><strong>Why it is asked.</strong> It's a very frequent error in practice.</p>
+<p><strong>Weak-answer warning signs.</strong> Hesitation over the conversion.</p>
+<p><strong>Follow-up.</strong> What practical overhead reduces real throughput further?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you decide what to estimate?</summary><p><strong>Strong answer.</strong> Whatever could change a decision. I work out which resources could be a bottleneck and check those first. If storage is obviously small, I say so and move on. I'd rather spend time on the one assumption that decides the architecture.</p>
+<p><strong>Why it is asked.</strong> Interviewers want judgment, and not arithmetic for its own sake.</p>
+<p><strong>Weak-answer warning signs.</strong> Calculating everything in equal detail, with no conclusion.</p>
+<p><strong>Follow-up.</strong> Give an example where the estimate changed your design.</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you know if an estimate is right?</summary><p><strong>Strong answer.</strong> Use a second method, such as total records against storage, or per-server against fleet. Compare with known systems of similar size. Check units. Then replace the riskiest number with a benchmark, and later with production data.</p>
+<p><strong>Why it is asked.</strong> Checking is what separates estimation from guessing.</p>
+<p><strong>Weak-answer warning signs.</strong> Never revisiting numbers.</p>
+<p><strong>Follow-up.</strong> Your two methods differ by 10 times. What do you do?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> What multipliers do people forget?</summary><p><strong>Strong answer.</strong> Fan-out, replication, write amplification, retries, indexes, cache misses after a restart, and overhead for TLS or serialization. Each can be several times on its own. I keep a checklist, and I use traces to measure fan-out.</p>
+<p><strong>Why it is asked.</strong> These are what make real load differ from expected.</p>
+<p><strong>Weak-answer warning signs.</strong> Reasoning only from user-level actions.</p>
+<p><strong>Follow-up.</strong> How does a cache failure change database load?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you estimate the number of servers without knowing per-server capacity?</summary><p><strong>Strong answer.</strong> I state a working assumption, compute a range with low and high values, and identify what the range implies. Then I'd propose a quick benchmark. I also use concurrency: rate × duration gives in-flight requests, which can limit you before CPU does.</p>
+<p><strong>Why it is asked.</strong> It reveals how you handle missing information.</p>
+<p><strong>Weak-answer warning signs.</strong> Quoting a memorized figure as fact.</p>
+<p><strong>Follow-up.</strong> Which is more likely to run out first for a slow-dependency service: CPU or threads?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How do you estimate the cost of a design?</summary><p><strong>Strong answer.</strong> Multiply each resource by a unit price: compute, memory, storage tier, and especially egress, which people often forget. Then add operational cost. I'd express it per request or per user, since that scales. I would state a range, and I would look at the largest line first.</p>
+<p><strong>Why it is asked.</strong> Cost is a core design constraint at this level.</p>
+<p><strong>Weak-answer warning signs.</strong> Ignoring egress or people's time.</p>
+<p><strong>Follow-up.</strong> Egress dominates. What design options reduce it?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> When is an estimate not good enough?</summary><p><strong>Strong answer.</strong> When the result is near a threshold, when a decision is expensive to reverse, or when the system has non-linear behavior such as contention. In those cases I measure with a prototype or a load test. Comparing two designs within 20% of each other needs more than arithmetic.</p>
+<p><strong>Why it is asked.</strong> It tests awareness of the tool's limits.</p>
+<p><strong>Weak-answer warning signs.</strong> Overconfidence in arithmetic alone.</p>
+<p><strong>Follow-up.</strong> What would you measure in a one-week prototype?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you improve estimation across your organization?</summary><p><strong>Strong answer.</strong> Keep estimates in design records and compare them with actual numbers later. Publish benchmark figures for shared components, and provide a template with a multiplier checklist. Over time, teams calibrate, and the review can focus on the assumptions and not the arithmetic.</p>
+<p><strong>Why it is asked.</strong> It moves from personal skill to organizational capability.</p>
+<p><strong>Weak-answer warning signs.</strong> Expecting everybody to be good at it unaided.</p>
+<p><strong>Follow-up.</strong> What would a useful table of internal benchmarks contain?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> Leadership wants a multi-year infrastructure budget from early estimates. How do you respond?</summary><p><strong>Strong answer.</strong> I would provide ranges with named assumptions and the business events that move them, and show which decisions are needed now versus later. I would stage commitments tied to measured milestones, and be explicit about which numbers are measured and which are guesses. This turns a false single number into a managed risk.</p>
+<p><strong>Why it is asked.</strong> Principals translate technical uncertainty into funding decisions.</p>
+<p><strong>Weak-answer warning signs.</strong> Giving one number, or refusing to give any.</p>
+<p><strong>Follow-up.</strong> Finance insists on one number. What do you give them?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> A respected engineer's estimate looks wrong, in a review full of people. How do you handle it?</summary><p><strong>Strong answer.</strong> I would ask about the assumption rather than attack the conclusion: &quot;What are we assuming for fan-out?&quot; Then compute together, or use a second route. If it's a real issue, it comes out as a shared finding. The aim is a correct decision, and a culture in which numbers can be challenged safely.</p>
+<p><strong>Why it is asked.</strong> Technical accuracy and influence go together at this level.</p>
+<p><strong>Weak-answer warning signs.</strong> Staying quiet, or trying to win publicly.</p>
+<p><strong>Follow-up.</strong> The discussion goes beyond the time available. How do you close it?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Each estimate exists to serve a decision.</li><li>Write units on every line, and let them cancel.</li><li>Use peak for capacity, retention and replicas for storage, and the working set for memory.</li><li>Remember the multipliers: fan-out, replication, retries, and indexes.</li><li>Check using a second route, because tenfold errors look reasonable.</li><li>Replace estimates with measurements as soon as you can.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>What decision does this estimate serve?</li><li>Are all assumptions stated, and the uncertain ones marked?</li><li>Have I included peak, multipliers, headroom, and failure?</li><li>Have I checked it a second way?</li><li>What does it imply about the design?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Per-server capacity comes from a load test.</li><li>Estimated and actual numbers are compared on a dashboard.</li><li>Storage exhaustion has a forecast and lead time.</li><li>Cache failure load has been calculated and planned for.</li><li>Large transfers are throttled and have a kill switch.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Peak-to-mean ratio:</strong> the highest rate divided by the average rate.</li><li><strong>Fan-out:</strong> internal calls per external request.</li><li><strong>Working set:</strong> the data accessed within a period.</li><li><strong>Dimensional analysis:</strong> checking that units cancel correctly.</li><li><strong>Headroom:</strong> spare capacity for forecast error and churn.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="1"><fieldset><legend>1. About how many requests per second is 1 billion per day?</legend><label><input type="radio" name="quiz-0" value="0"> 1,200</label><label><input type="radio" name="quiz-0" value="1"> 12,000</label><label><input type="radio" name="quiz-0" value="2"> 120,000</label><label><input type="radio" name="quiz-0" value="3"> 1,200,000</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 12,000.</p><p>1,000,000,000 ÷ 86,400 ≈ 11,574, or about 12,000.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. How long does 1 TB take over a 1 Gbit/s link at full speed?</legend><label><input type="radio" name="quiz-1" value="0"> 17 minutes</label><label><input type="radio" name="quiz-1" value="1"> 1 hour</label><label><input type="radio" name="quiz-1" value="2"> 2.2 hours</label><label><input type="radio" name="quiz-1" value="3"> 8 hours</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 2.2 hours.</p><p>1 Gbit/s is 125 MB/s, and 1,000,000 MB ÷ 125 MB/s = 8,000 s.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>3. Writes are 10M per day at 500 bytes, kept for 5 years, with 3 replicas. What is total storage?</legend><label><input type="radio" name="quiz-2" value="0"> 2.7 TB</label><label><input type="radio" name="quiz-2" value="1"> 27.4 TB</label><label><input type="radio" name="quiz-2" value="2"> 274 TB</label><label><input type="radio" name="quiz-2" value="3"> 2.7 PB</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 27.4 TB.</p><p>5 GB × 1,825 days = 9.1 TB, and × 3 = 27.4 TB. The third option is an easy tenfold slip.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>4. With a 90% hit ratio and 35,000 reads per second at peak, how much load falls on the database if the cache fails completely?</legend><label><input type="radio" name="quiz-3" value="0"> 3,500 reads per second</label><label><input type="radio" name="quiz-3" value="1"> 7,000 reads per second</label><label><input type="radio" name="quiz-3" value="2"> 35,000 reads per second</label><label><input type="radio" name="quiz-3" value="3"> It's unchanged.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 35,000 reads per second.</p><p>Ten times normal, which is why a cache this effective is load-bearing.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>5. Which is the best next step when a capacity estimate lands right at a design threshold?</legend><label><input type="radio" name="quiz-4" value="0"> Round it up and ship.</label><label><input type="radio" name="quiz-4" value="1"> Take the average of two guesses.</label><label><input type="radio" name="quiz-4" value="2"> Measure the deciding number with a benchmark or prototype.</label><label><input type="radio" name="quiz-4" value="3"> Ignore the threshold.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Measure the deciding number with a benchmark or prototype..</p><p>Estimates are too rough to decide close cases. Measure the factor that matters.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Continue with Storage, bandwidth, memory, and IOPS calculations <span class="muted">(not yet written)</span> for the details of storage and bandwidth, <a href="../../topics/concurrency-utilization-saturation-and-bottlenecks/index.html">Concurrency, utilization, saturation, and bottlenecks</a> for finding bottlenecks, and Little’s Law and practical queueing theory <span class="muted">(not yet written)</span> for queueing. Cloud unit economics <span class="muted">(not yet written)</span> turns these resource figures into money.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/tail-latency/index.html">Tail latency</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/latency-budgets-and-critical-path-analysis/index.html">Latency budgets and critical-path analysis</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

@@ -1,0 +1,13 @@
+---
+title: "Lifecycle of a quality requirement, from proposal to retirement"
+---
+stateDiagram-v2
+    [*] --> Proposed: engineer or stakeholder drafts it
+    Proposed --> Agreed: named owner accepts target and cost
+    Agreed --> Verified: pre-launch test or SLI confirms it
+    Verified --> Violated: measurement misses target
+    Violated --> Verified: system fixed
+    Violated --> Proposed: target renegotiated
+    Verified --> Proposed: business context changes
+    Verified --> Retired: journey removed
+    Retired --> [*]

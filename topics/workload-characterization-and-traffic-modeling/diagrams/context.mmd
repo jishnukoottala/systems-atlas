@@ -1,0 +1,16 @@
+---
+title: "Context: from production traffic to design decisions"
+---
+flowchart LR
+    C["Clients"] -->|"HTTPS"| LB["Load balancer: access logs"]
+    LB --> S["Services"]
+    S --> DB["Datastores: slow logs"]
+    LB -->|"log export"| L["Log store: restricted access"]
+    DB -->|"log export"| L
+    L --> A["Analysis job: anonymizes and aggregates"]
+    A --> P["Workload profile: versioned"]
+    MK["Product calendar: launches and events"] --> F["Forecast"]
+    P --> F
+    F --> CP["Capacity plan and design review"]
+    P --> G["Load generator"]
+    G -->|"replay or model"| T["Test environment"]

@@ -1,0 +1,13 @@
+---
+title: "State of an assumption from recording to resolution"
+---
+stateDiagram-v2
+    [*] --> Unverified: recorded with owner and date
+    Unverified --> Confirmed: evidence supports it
+    Unverified --> Refuted: evidence contradicts it
+    Unverified --> Overdue: date passes with no evidence
+    Overdue --> Confirmed: evidence supports it
+    Overdue --> Refuted: evidence contradicts it
+    Confirmed --> Unverified: conditions change
+    Refuted --> DecisionsReopened: dependent decisions reviewed
+    DecisionsReopened --> [*]

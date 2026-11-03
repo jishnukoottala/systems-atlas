@@ -1,0 +1,17 @@
+---
+title: "Context: where drivers come from and what they shape"
+---
+flowchart LR
+    B["Business brief"] --> C["Classify each statement"]
+    L["Legal and compliance"] --> C
+    F["Finance and vendors"] --> C
+    T["Team skills and existing systems"] --> C
+    C --> H["Hard constraints"]
+    C --> S["Soft constraints: owner, cost"]
+    C --> A["Assumptions: owner, date"]
+    C --> R["Requirements: targets"]
+    H --> D["Architecture drivers (top 3 to 5)"]
+    S --> D
+    A --> D
+    R --> D
+    D -->|"shape"| X["Architecture decisions and ADRs"]

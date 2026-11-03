@@ -1,0 +1,19 @@
+---
+title: "Context: who supplies requirements and who consumes them"
+---
+flowchart LR
+    subgraph sources["Stakeholders: own risk"]
+      B["Business owner: value, cost limit"]
+      C["Customers: journeys"]
+      R["Regulators and legal: constraints"]
+      O["Operators: on-call limits"]
+    end
+    REQ["Requirements record (versioned in Git, owned per journey)"]
+    B --> REQ
+    C --> REQ
+    R --> REQ
+    O --> REQ
+    REQ -->|"ranked drivers"| D["Architecture design and ADRs"]
+    REQ -->|"acceptance scenarios"| T["Load and failure tests"]
+    REQ -->|"SLI and SLO definitions"| M["Production monitoring"]
+    M -->|"measured evidence"| REQ

@@ -1,0 +1,11 @@
+---
+title: "Failure path: an assumption believed to be fact"
+---
+flowchart TD
+    A["Read-heavy stated as fact"] --> B["Design: one primary, replicas, caching"]
+    B --> C["New feature: writes grow 20x"]
+    C --> D["Primary write saturation"]
+    D --> E["Replication lag and failed writes"]
+    E --> F["Emergency sharding under load"]
+    A -.->|"recorded with owner and date"| G["Quarterly check of the write ratio"]
+    G -.->|"early warning"| H["Planned migration before saturation"]

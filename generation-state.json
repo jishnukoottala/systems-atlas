@@ -1,0 +1,127 @@
+{
+  "schemaVersion": 1,
+  "phase": 2,
+  "batchSize": 5,
+  "updatedAt": "2026-11-03T09:35:24.454Z",
+  "nextItems": [
+    "A007",
+    "A008",
+    "A009",
+    "A010",
+    "A011"
+  ],
+  "items": {
+    "A001": {
+      "status": "complete",
+      "batch": 1,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Functional and non-functional requirements"
+    },
+    "A002": {
+      "status": "complete",
+      "batch": 1,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Constraints, assumptions, and architecture drivers"
+    },
+    "A003": {
+      "status": "complete",
+      "batch": 1,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Workload characterization and traffic modeling"
+    },
+    "O090": {
+      "status": "complete",
+      "batch": 1,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Latency"
+    },
+    "O091": {
+      "status": "complete",
+      "batch": 1,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Throughput"
+    },
+    "O092": {
+      "status": "complete",
+      "batch": 2,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "P99 latency"
+    },
+    "O093": {
+      "status": "complete",
+      "batch": 2,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Tail latency"
+    },
+    "A004": {
+      "status": "complete",
+      "batch": 2,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Back-of-the-envelope capacity estimation"
+    },
+    "A005": {
+      "status": "complete",
+      "batch": 2,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Latency budgets and critical-path analysis"
+    },
+    "A006": {
+      "status": "complete",
+      "batch": 2,
+      "examples": {
+        "typescript": "passed",
+        "python": "passed"
+      },
+      "sourcesChecked": "2026-11-03",
+      "title": "Concurrency, utilization, saturation, and bottlenecks"
+    }
+  },
+  "claimsRequiringVerification": [
+    "A001: https://www.iso.org/standard/72089.html refused the automated link check; confirm it manually",
+    "A001: https://www.iso.org/standard/78176.html refused the automated link check; confirm it manually",
+    "A002: https://www.iso.org/standard/72089.html refused the automated link check; confirm it manually",
+    "A003: https://doi.org/10.1145/1807128.1807152 refused the automated link check; confirm it manually",
+    "A003: https://doi.org/10.1145/2254756.2254766 refused the automated link check; confirm it manually",
+    "A006: https://doi.org/10.1145/356733.356735 refused the automated link check; confirm it manually"
+  ],
+  "notes": [
+    "Go, Rust, protoc, Docker, and kubectl were not installed on the generation machine on 2026-11-03. Examples needing them will be recorded as not-executed until those toolchains are available."
+  ],
+  "batchesCompleted": 2
+}

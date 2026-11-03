@@ -1,0 +1,554 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Workload characterization and traffic modeling | Systems Atlas</title>
+<meta name="description" content="Workload characterization is measuring how a system is actually used: request rates over time, the mix of operations, how traffic spreads across keys and tenant">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="A003">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Workload characterization and traffic modeling</h1>
+<p class="meta-line">A003 · Intermediate · about 1.5 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>Workload characterization is measuring how a system is actually used: request rates over time, the mix of operations, how traffic spreads across keys and tenants, how large the objects are, and how users' sessions behave. Traffic modeling turns those measurements into a forecast that can be used to size and test a design.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>Averages conceal almost everything that breaks production. A service averaging 1,000 requests per second may peak at 8,000 for 90 seconds, send 40% of its traffic to 0.1% of its keys, and serve a few objects 1,000 times larger than the median. Each of those features selects a different design: bursts call for queues or headroom, key skew calls for caching and hot-key handling, and size variance calls for separate paths for large objects. Without characterization, a load test can also pass while proving nothing, because it tests a workload that does not exist.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/functional-and-non-functional-requirements/index.html">Functional and non-functional requirements</a></p><h3 id="study-time">Study time</h3><p>About 1.5 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p><a href="../../topics/back-of-the-envelope-capacity-estimation/index.html">Back-of-the-envelope capacity estimation</a>, Hot keys, hot partitions, and rebalancing <span class="muted">(not yet written)</span>, Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>, <a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Describe a workload in terms of rate, mix, distribution, size, and time correlation.</li><li>Compute peak-to-mean ratio, read ratio, key skew, and size percentiles from a trace.</li><li>Explain why averages mislead for heavy-tailed distributions.</li><li>Recognize open and closed workloads and how each one behaves under overload.</li><li>Turn a measured profile into a growth forecast and a realistic test.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>A photo-sharing service plans to shard its metadata store. The design uses a mean of 12,000 reads and 800 writes per second, hash-partitioned by photo ID across 32 shards, so each shard gets 400 requests per second. After launch, three shards regularly hit 90% CPU while the others stay at 15%.</p>
+<p>A trace from the load balancer explains why. The peak-to-mean ratio is 3.4, because of a daily evening peak, and it reaches 11 during live events. The top 0.1% of photos receive 38% of reads, and a celebrity post can reach 40,000 reads per second by itself. Hash partitioning spreads keys evenly, but not load. Object sizes are bimodal: most metadata rows are near 400 bytes, but rows with long comment threads go past 1 MB, and those block the event loop for long stretches. None of this appeared in the mean, and two days of log analysis would have revealed all of it before the migration.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Consider planning a road network. Knowing that a city averages 50,000 trips per day tells you little. You need to know the rush-hour peak, which junctions get most of the traffic, the fraction of heavy trucks, and how a stadium event changes things. Traffic engineers count cars by junction, hour, and vehicle type for this reason.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>Drivers react to congestion by choosing another route or staying home, and many software clients do the reverse: they retry, adding load exactly when the system is slow. Software traffic can also jump 100-fold in minutes, and a single bot may send more than a city's worth of users. Roads don't have traffic spikes caused by one celebrity's post.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> clients, sessions, requests, keys, tenants, objects, time windows.</li><li><strong>State:</strong> the current arrival rate, popularity ranking, and data size, all of which drift.</li><li><strong>Flow:</strong> raw logs, then a sample or a stream of counters, then a profile, then a model, then a forecast and test.</li><li><strong>Invariant 1:</strong> a profile states the window and population it came from.</li><li><strong>Invariant 2:</strong> a test workload reproduces the distribution, not only the mean.</li><li><strong>Invariant 3:</strong> forecasts carry a range and date, then get compared to what actually happened.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th><th scope="col">Design consequence</th></tr></thead><tbody><tr><td>Peak-to-mean ratio</td><td>Highest short-window rate ÷ average rate</td><td>Headroom, autoscaling, queues</td></tr><tr><td>Read/write ratio</td><td>Mix of operations</td><td>Replicas, caching, storage engine</td></tr><tr><td>Skew</td><td>Unequal access across keys</td><td>Hot keys, cache value, partitioning</td></tr><tr><td>Zipf distribution</td><td>Frequency of rank r is proportional to 1 ÷ r^s</td><td>Small caches can catch much traffic</td></tr><tr><td>Heavy tail</td><td>Rare large values dominate the total</td><td>Averages mislead, separate large objects</td></tr><tr><td>Burstiness</td><td>Short-term clustering of arrivals</td><td>Queue sizing, more than rate alone suggests</td></tr><tr><td>Diurnal pattern</td><td>Daily cycle</td><td>Regional peaks, scaling schedules</td></tr><tr><td>Working set</td><td>Data touched in a window</td><td>Memory and cache sizing</td></tr><tr><td>Open workload</td><td>Arrivals do not depend on completions</td><td>Queues can grow without limit</td></tr><tr><td>Closed workload</td><td>Fixed clients wait for each response</td><td>Self-throttles, and hides overload</td></tr></tbody></table></div>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>A workload is a joint distribution over who asks, for what, when, and how much. A single number compresses this and throws away the variation that governs system behavior. Queues form because of variation, not only because of the mean rate: even a system that has spare capacity on average will have queueing when requests clump, as covered in Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>.</p>
+<p>Skew has opposite effects on different components. It helps caches, because a few keys account for most reads, and it hurts partitioning, because those keys land on a single shard. That's why you should measure instead of assuming &quot;more skew is bad&quot; or &quot;more skew is good&quot;. The same applies to time: a 1-minute average can hide a 1-second burst that exhausts a connection pool.</p>
+<p>The open or closed distinction matters enormously for testing. Most public web traffic is open-like: new users arrive regardless of how slow you are. A closed load generator with 100 threads backs off when the server slows, so it cannot produce the overload that real traffic does. See Benchmark design and coordinated omission <span class="muted">(not yet written)</span>.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p><strong>Peak-to-mean:</strong> PMR = peak rate ÷ mean rate. Always state the window. PMR at 1 s can far exceed PMR at 1 min.</p>
+<p><strong>Zipf share:</strong> with s = 1 and N keys, the share of traffic to the top k keys ≈ ln(k) + 0.577, divided by ln(N) + 0.577. For N = 10,000,000 and k = 10,000: (9.21 + 0.58) ÷ (16.12 + 0.58) = 9.79 ÷ 16.70 ≈ 58.6%. So 0.1% of keys get about 59% of requests under this model.</p>
+<p><strong>Coefficient of variation:</strong> CV = standard deviation ÷ mean. CV near 1 is roughly Poisson-like in interarrival times, and larger values indicate burstiness.</p>
+<p><strong>Growth:</strong> with g% monthly growth, load at month m = L0 × (1 + g)^m. At 8% monthly, doubling takes ln 2 ÷ ln 1.08 ≈ 9 months.</p>
+<h3 id="complexity">Complexity</h3>
+<p>An exact top-K over n requests and d distinct keys takes O(n) time and O(d) memory, which is infeasible for billions of keys. Space-Saving uses O(k) memory for k counters, with error bounded by n ÷ k. Exact percentiles require O(n log n) for sorting, and a histogram takes O(1) per sample at the cost of bucket-width error. A Count-Min sketch is another option, at O(w × d) memory. See Probabilistic data structures <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>Choose a source: load balancer logs are best for external traffic since they see failures too. Add database slow logs and per-service traces for internal views.</li><li>Choose a window that includes a full cycle: at least a week, plus known events.</li><li>Extract timestamp, operation, key or route, tenant, size, status, and latency.</li><li>Compute rate at several resolutions (1 s, 1 min, 1 h), operation mix, skew, sizes, and session behavior.</li><li>Segment by route, tenant, region, and client type. Aggregates may hide a dominant client.</li><li>Build the model: distributions and parameters plus growth assumptions with a range.</li><li>Validate by replaying or generating traffic and comparing the resulting profile and resource use with production.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-profile"><figcaption>Lifecycle of a workload model</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A model is drafted from a trace, validated against production, and used for forecasts. When drift is detected it becomes stale and gets remeasured. Unmeasured new features begin as assumed models.">stateDiagram-v2
+    [*] --&gt; Assumed: new feature with no traffic
+    [*] --&gt; Measured: trace of existing traffic
+    Assumed --&gt; Measured: first production data
+    Measured --&gt; Validated: replay matches production
+    Validated --&gt; InUse: drives sizing and tests
+    InUse --&gt; Stale: measured drift exceeds tolerance
+    Stale --&gt; Measured: new trace taken</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A model is drafted from a trace, validated against production, and used for forecasts. When drift is detected it becomes stale and gets remeasured. Unmeasured new features begin as assumed models.</p></figure>
+<p>A model starts either from data or from a stated assumption, and new features can only begin as assumptions. Validation is where most teams stop short: until a generated workload reproduces production resource use, you only have a hypothesis.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Request concurrency is itself part of the workload: a fan-out page load sends 30 near-simultaneous requests, and they arrive as a clump. Correlated clients do this at larger scale: mobile apps polling on the hour, cron jobs at midnight, and retries following a blip. Look for spikes aligned to clock boundaries in the per-second data. Adding jitter at clients is frequently the cheapest capacity increase available.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Logs from several machines arrive out of order and with clock differences, and analyses at 1-second resolution are sensitive to this. Sort by timestamp within a tolerance, or use one measurement point. Sampling also changes results: sample by key or session to keep correlations intact, because random request sampling loses session behavior and understates rare keys.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>The team that owns the service owns its profile. Infrastructure owns aggregate capacity forecasts, which depend on those profiles. Product and marketing own information about future events, and need a route into forecasting. Logs containing user identifiers are subject to privacy controls, so whoever analyzes them must follow data-handling rules.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: from production traffic to design decisions</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Clients send traffic through a load balancer to services. Logs flow into a data lake. An analysis job produces a profile, which feeds capacity planning, design review, and load generation. Load generation targets a test environment. Product calendars also feed forecasts.">flowchart LR
+    C[&quot;Clients&quot;] --&gt;|&quot;HTTPS&quot;| LB[&quot;Load balancer: access logs&quot;]
+    LB --&gt; S[&quot;Services&quot;]
+    S --&gt; DB[&quot;Datastores: slow logs&quot;]
+    LB --&gt;|&quot;log export&quot;| L[&quot;Log store: restricted access&quot;]
+    DB --&gt;|&quot;log export&quot;| L
+    L --&gt; A[&quot;Analysis job: anonymizes and aggregates&quot;]
+    A --&gt; P[&quot;Workload profile: versioned&quot;]
+    MK[&quot;Product calendar: launches and events&quot;] --&gt; F[&quot;Forecast&quot;]
+    P --&gt; F
+    F --&gt; CP[&quot;Capacity plan and design review&quot;]
+    P --&gt; G[&quot;Load generator&quot;]
+    G --&gt;|&quot;replay or model&quot;| T[&quot;Test environment&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Clients send traffic through a load balancer to services. Logs flow into a data lake. An analysis job produces a profile, which feeds capacity planning, design review, and load generation. Load generation targets a test environment. Product calendars also feed forecasts.</p></figure>
+<p>Taking data at the load balancer captures traffic the application never logged, including requests that timed out. The profile sits between raw logs and its consumers, so people working on capacity do not require direct access to sensitive logs. The product calendar arrow is the one that is usually missing, and that absence is why launches surprise capacity planners.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the generator and two analyzers</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. The Python seeded generator writes NDJSON. The Python batch characterizer loads it all into memory. The TypeScript streaming profiler reads line by line, with a per-second counter, Space-Saving top-K summary, and size histogram.">flowchart LR
+    G[&quot;Python generator: sine, burst, Zipf, lognormal&quot;] --&gt;|&quot;NDJSON file&quot;| F[&quot;trace.ndjson&quot;]
+    G --&gt; B[&quot;Python characterize: exact, in memory&quot;]
+    F --&gt;|&quot;read line by line&quot;| I[&quot;TypeScript Profiler.ingest&quot;]
+    I --&gt; C1[&quot;Per-second counts&quot;]
+    I --&gt; C2[&quot;Space-Saving top-K: 1,000 counters&quot;]
+    I --&gt; C3[&quot;Size histogram: power-of-two buckets&quot;]
+    C1 --&gt; O[&quot;Profile JSON&quot;]
+    C2 --&gt; O
+    C3 --&gt; O</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. The Python seeded generator writes NDJSON. The Python batch characterizer loads it all into memory. The TypeScript streaming profiler reads line by line, with a per-second counter, Space-Saving top-K summary, and size histogram.</p></figure>
+<p>The two analyzers show the common trade-off: exact answers using memory proportional to input, or bounded memory with bounded error. Comparing both on the same file is a good way to see how close an approximation is. The lab has you do so.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: refreshing a profile before a launch</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. A scheduled job queries log storage for a week of data, computes the profile, and compares it to the last version. On significant drift, it opens a ticket for the owner, who updates the forecast and runs a load test.">sequenceDiagram
+    participant J as Scheduled job
+    participant L as Log store
+    participant P as Profile store
+    participant O as Service owner
+    participant T as Load test
+    J-&gt;&gt;L: Query 7 days of access logs
+    L--&gt;&gt;J: Aggregated rate, mix, and key counts
+    J-&gt;&gt;P: Load last profile
+    P--&gt;&gt;J: Prior version
+    J-&gt;&gt;J: Compute drift per metric
+    J-&gt;&gt;O: Ticket: peak-to-mean rose from 3.1 to 4.6
+    O-&gt;&gt;T: Run updated model at forecast peak
+    T--&gt;&gt;O: Saturation at 78 percent of forecast
+    O-&gt;&gt;P: Publish new profile and capacity action</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. A scheduled job queries log storage for a week of data, computes the profile, and compares it to the last version. On significant drift, it opens a ticket for the owner, who updates the forecast and runs a load test.</p></figure>
+<p>Refresh is automated, and the judgment is not. The job finds drift and the owner decides what it means. The load test uses the new shape, so it reveals a saturation point that the old profile would have missed.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: sized on the mean, broken by the distribution</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Capacity is sized from a mean, and shards are hashed by key. A popular item overloads one shard, its latency rises, clients retry, and the overload spreads through shared connection pools. The fix is adding hot-key caching and load limits per key.">flowchart TD
+    A[&quot;Sized on mean: 400 rps per shard&quot;] --&gt; B[&quot;Celebrity post: 40,000 rps on one key&quot;]
+    B --&gt; C[&quot;One shard saturates&quot;]
+    C --&gt; D[&quot;Latency rises, clients retry&quot;]
+    D --&gt; E[&quot;Shared connection pools fill up&quot;]
+    E --&gt; F[&quot;Unrelated requests fail&quot;]
+    C --&gt;|&quot;detected: per-shard CPU imbalance&quot;| G[&quot;Add hot-key cache and per-key limits&quot;]
+    G --&gt; H[&quot;Load is flattened and shard recovers&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Capacity is sized from a mean, and shards are hashed by key. A popular item overloads one shard, its latency rises, clients retry, and the overload spreads through shared connection pools. The fix is adding hot-key caching and load limits per key.</p></figure>
+<p>The important step is the jump from one shard to unrelated requests, through shared pools. Skew begins as a local problem and spreads through shared resources. The detection path relies on per-shard metrics: a fleet average would hide this entirely. See Hot keys, hot partitions, and rebalancing <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>Targets design effort at what actually stresses the system.</li><li>Makes load tests and capacity plans believable.</li><li>Often reveals cheap fixes such as adding client jitter, or removing one abusive client.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Log retention and analysis cost money, and there are privacy obligations.</li><li>Detailed profiles go stale, so they require ongoing refresh.</li><li>Too much modeling produces false precision, especially with new products.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>Replay real traffic:</strong> the highest fidelity, but it has privacy and state issues. See Shadow traffic and traffic replay <span class="muted">(not yet written)</span>.</li><li><strong>Synthetic parametric model:</strong> easy to scale and share, but misses correlations.</li><li><strong>Benchmark standards like YCSB:</strong> comparable across systems, but not your workload.</li><li><strong>Reasoned estimates:</strong> the only choice for new products. Replace them quickly.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>Before sharding, choosing storage, setting autoscaling policies, running a load test, or negotiating committed capacity. Also after any significant product change.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>For a product with too little traffic to matter, a brief check of the logs is enough. For a brand-new product there is nothing to measure, so use estimates and plan a review after launch.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>Peak-to-mean or skew has drifted by more than an agreed tolerance, such as 25%.</li><li>A new client type, region, or high-volume tenant appears.</li><li>Test results and production resource use disagree.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>Measured: mean of 12,000 reads and 800 writes per second, a 1-minute PMR of 3.4, top 0.1% of keys getting 38% of reads, a cache hit rate of 85% on reads. Assumed: 8% monthly growth for 12 months and 900 reads per second per shard at safe utilization.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Future mean rate = current × (1 + monthly growth)^months, in requests per second.</li><li>Peak rate = future mean × PMR, in requests per second.</li><li>Database reads = peak reads × (1 − hit rate).</li><li>Shards = database reads ÷ reads per shard.</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Growth factor: 1.08^12 = 2.52.</li><li>Future mean reads: 12,000 × 2.52 = 30,240 per second.</li><li>Peak reads: 30,240 × 3.4 = 102,816 per second.</li><li>Database reads: 102,816 × 0.15 = 15,422 per second.</li><li>Shards: 15,422 ÷ 900 = 17.1, rounded up to 18.</li><li>Using the mean alone gives 30,240 × 0.15 ÷ 900 = 5.04, or 6 shards. That is three times too few.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>Add 30% for forecast error: 18 ÷ 0.7 = 25.7, so 26 shards. Since shard counts are expensive to change, many teams round to a convenient power of two, here 32. Note also that a drop in hit rate from 85% to 75% raises database reads by 67%, from 15% to 25% of peak. So the cache's hit rate is itself a capacity assumption.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>If a cache node fails and hit rate drops to 60%, then database reads are 102,816 × 0.4 = 41,126 per second, needing 46 shards at safe load. Provisioning for this is costly, so the realistic alternatives are protecting the database through load shedding, with the failure budgeted, or keeping cache replicas warm. See Load shedding and admission control <span class="muted">(not yet written)</span> and Cache stampedes and request coalescing <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-sizing-from-the-mean">Sizing from the mean</h3><dl><dt>Trigger</dt><dd>Capacity is calculated from daily average rate.</dd><dt>Symptoms</dt><dd>Saturation during predictable peaks, and normal metrics overnight.</dd><dt>Blast radius</dt><dd>The whole service during peaks, and its shared dependencies.</dd><dt>Detection</dt><dd>Graph rate at 1-second and 1-minute resolution, and compare with capacity.</dd><dt>Mitigation</dt><dd>Add capacity, rate-limit batch clients, and shift deferrable work off-peak.</dd><dt>Recovery</dt><dd>Re-plan using measured PMR.</dd><dt>Prevention</dt><dd>Require a peak figure and window in each capacity plan.</dd></dl></div>
+<div class="failure"><h3 id="failure-hidden-key-skew">Hidden key skew</h3><dl><dt>Trigger</dt><dd>Hash partitioning is used under the assumption that uniform keys mean uniform load.</dd><dt>Symptoms</dt><dd>A few shards are near saturation while the fleet average looks healthy.</dd><dt>Blast radius</dt><dd>Users whose keys share that shard, and then others via shared pools.</dd><dt>Detection</dt><dd>Track per-partition load and top keys by access count.</dd><dt>Mitigation</dt><dd>Add a hot-key cache, per-key rate limits, or split the hot key.</dd><dt>Recovery</dt><dd>Rebalance and verify load spread by partition.</dd><dt>Prevention</dt><dd>Measure skew before choosing a partition scheme.</dd></dl></div>
+<div class="failure"><h3 id="failure-synchronized-clients">Synchronized clients</h3><dl><dt>Trigger</dt><dd>Clients poll or run jobs on clock boundaries, or retry together.</dd><dt>Symptoms</dt><dd>Sharp spikes at the top of the minute or hour, with a low mean.</dd><dt>Blast radius</dt><dd>Connection pools and any capacity sized for the mean.</dd><dt>Detection</dt><dd>Look at per-second traffic folded over the minute and the hour.</dd><dt>Mitigation</dt><dd>Throttle at the edge and shed excess requests.</dd><dt>Recovery</dt><dd>Ship client jitter and spread scheduled jobs.</dd><dt>Prevention</dt><dd>Mandate jitter in client libraries and job schedulers.</dd></dl></div>
+<div class="failure"><h3 id="failure-load-test-uses-the-wrong-shape">Load test uses the wrong shape</h3><dl><dt>Trigger</dt><dd>A closed-loop generator uses uniform keys and fixed small objects.</dd><dt>Symptoms</dt><dd>Tests pass, and production falls over at a fraction of tested load.</dd><dt>Blast radius</dt><dd>Launch, and false confidence in all related capacity plans.</dd><dt>Detection</dt><dd>Compare test CPU, cache hit rate, and key distribution with production.</dd><dt>Mitigation</dt><dd>Limit launch traffic while the test gets corrected.</dd><dt>Recovery</dt><dd>Rebuild the test with measured distributions, in open-loop mode.</dd><dt>Prevention</dt><dd>Validate generated workloads against production before relying on them.</dd></dl></div>
+<div class="failure"><h3 id="failure-profile-hides-a-dominant-client">Profile hides a dominant client</h3><dl><dt>Trigger</dt><dd>Aggregated numbers mix a single partner's batch job with user traffic.</dd><dt>Symptoms</dt><dd>Unexplained periodic peaks, and growth that does not match user numbers.</dd><dt>Blast radius</dt><dd>Whoever shares capacity with that client.</dd><dt>Detection</dt><dd>Segment by client identifier and compute top-client share.</dd><dt>Mitigation</dt><dd>Apply a quota for the client.</dd><dt>Recovery</dt><dd>Move batch traffic to a dedicated path or time window.</dd><dt>Prevention</dt><dd>Attribute all traffic to a client or tenant identifier. See Rate limiting <span class="muted">(not yet written)</span>.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Access logs commonly contain IP addresses, user IDs, query strings, and sometimes tokens or email addresses in URLs. Bulk analysis copies that sensitive data into a place with broader access. Traffic data also reveals business information like customer sizes and launch timing.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Treat raw logs as sensitive and aggregated profiles as less so. Separate them: restricted store for raw logs, with analysis jobs writing aggregates only. Never send raw production logs into a test environment without review.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Restrict raw-log queries to named roles, and log who queried what. Use service accounts for scheduled analysis with read access only to the needed tables and columns.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>Per-tenant profiles reveal one customer's activity, so do not share them with other customers. Keep per-tenant rates and quotas in the profile, as this data is how noisy neighbors are found. See Tenant isolation and noisy-neighbor controls <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Scrub query strings and tokens at collection time. Hash keys with a secret salt when analysis requires only cardinality and frequency. Retain raw data for a stated period and expire it. Note that hashed identifiers can remain personal data under regulations such as GDPR. See Data classification, retention, and deletion <span class="muted">(not yet written)</span>.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>A workload profile is also an abuse detector. Scrapers, credential stuffing, and enumeration show unusual key distributions, session lengths, and failure rates. Also take care that attackers cannot poison forecasts: exclude identified bot traffic from growth estimates, while keeping it for capacity estimates, as it still consumes resources.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>Use a rate counter by route, tenant, and status; a size histogram by route; per-partition load; cache hit rate; and top-K keys from a sketch. Avoid using raw keys as metric labels, because the cardinality would overwhelm the metrics system. See Metric cardinality and histogram design <span class="muted">(not yet written)</span>.</p>
+<h3 id="logs">Logs</h3>
+<p>Standard fields: timestamp, route template rather than raw URL, status, duration, sizes, client class, hashed tenant ID. Keep templates low-cardinality. Log sampling must be recorded, so rates can be correctly estimated afterward.</p>
+<h3 id="traces">Traces</h3>
+<p>Traces reveal the fan-out ratio: how many internal calls each external request makes. This multiplier is a key parameter of a workload model and it often drifts as features grow.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Show one workload page per service: rate at two resolutions, a week-over-week overlay, operation mix, top clients, partition imbalance (maximum ÷ mean), and profile drift compared with the plan.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Page on symptoms like saturation, not on workload shifts themselves. Send tickets on drift: &quot;maximum partition load has exceeded twice the mean for an hour&quot;, or &quot;traffic exceeds the planned peak by 20%&quot;.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>Profiles for tier-1 services are refreshed within 30 days.</li><li>Maximum-to-mean partition load stays under 2.0 for 99% of hours.</li><li>Forecast error at 3 months stays within 25% for tier-1 services.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>On an unexplained traffic rise: segment by route, client, and region, check for a single source, check retry rate, and compare with the launch calendar. If it is a single client, apply a quota. If it is organic, scale and update the forecast.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>Python generates a seeded synthetic trace and computes an exact in-memory profile. TypeScript reads the same trace as a stream using bounded state. Using a real <code>readline</code> stream shows how you would handle logs too big to load. No HTTP layer is included because these are offline tools.</p>
+<h3 id="data-structures">Data structures</h3>
+<p><code>SpaceSaving</code> keeps k counters. When full, it evicts the minimum and inherits its count, guaranteeing that any key with frequency above n ÷ k stays present. The size histogram uses power-of-two buckets, so the result is an upper bound. The Python generator precomputes a cumulative table and uses binary search for Zipf sampling.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>python -m app.main [--seed N] [--zipf S] [--export PATH]</code> prints a profile and optionally writes NDJSON. <code>pnpm start &lt;trace.ndjson&gt;</code> prints a streaming profile. The <code>Profiler.ingest</code> method takes one raw line, so it could consume from any source.</p>
+<h3 id="error-handling">Error handling</h3>
+<p>Malformed lines are counted in <code>skipped</code> rather than crashing the run, since real logs always contain a few of them, and the count is reported so that high skip rates are visible. An empty trace raises an error because reporting zeros would look like a valid measurement.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>The stream processes one line at a time, and <code>for await</code> applies backpressure so a large file does not fill memory. To parallelize this, you would partition the file, build a profile for each part, and merge. Counts and histograms merge easily, while Space-Saving merges only approximately.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>The synthetic trace has independent keys and sizes, unlike real traffic. The per-second map grows with duration; production code would use a fixed window. The Poisson sampling is a normal approximation. Python keeps every request in memory, which is fine at this scale only.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Run analysis in a data warehouse or stream processor, add client and tenant dimensions, scrub sensitive fields, version profiles, compare with the previous version automatically, and validate them against production resource use.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Streaming trace profile. Production logs may not fit in memory, so this reads NDJSON line by line
+// with bounded state: per-second counts, a keyed count capped by a Space-Saving summary, and a
+// fixed-bucket size histogram.
+import { createReadStream } from 'node:fs';
+import { createInterface } from 'node:readline';
+import { fileURLToPath } from 'node:url';
+
+export interface TraceLine { t: number; op: string; key: number; size: number }
+
+export class SpaceSaving {
+  private readonly counts = new Map&lt;number, number&gt;();
+  private readonly capacity: number;
+  constructor(capacity: number) { this.capacity = capacity; }
+
+  add(key: number): void {
+    const seen = this.counts.get(key);
+    if (seen !== undefined) { this.counts.set(key, seen + 1); return; }
+    if (this.counts.size &lt; this.capacity) { this.counts.set(key, 1); return; }
+    // Replace the current minimum and inherit its count. This overestimates but never misses
+    // an item whose true frequency exceeds total / capacity.
+    let minKey = -1;
+    let min = Number.POSITIVE_INFINITY;
+    for (const [k, c] of this.counts) if (c &lt; min) { min = c; minKey = k; }
+    this.counts.delete(minKey);
+    this.counts.set(key, min + 1);
+  }
+
+  top(n: number): Array&lt;[number, number]&gt; {
+    return [...this.counts.entries()].sort((a, b) =&gt; b[1] - a[1]).slice(0, n);
+  }
+}
+
+export interface StreamProfile {
+  lines: number;
+  skipped: number;
+  meanRps: number;
+  peakRps: number;
+  peakToMean: number;
+  readRatio: number;
+  topKeys: Array&lt;[number, number]&gt;;
+  sizeP99UpperBound: number;
+}
+
+export class Profiler {
+  private lines = 0;
+  private skipped = 0;
+  private reads = 0;
+  private minT = Infinity;
+  private maxT = -Infinity;
+  private readonly perSecond = new Map&lt;number, number&gt;();
+  private readonly keys = new SpaceSaving(1_000);
+  private readonly sizeBuckets = new Array&lt;number&gt;(40).fill(0); // power-of-two buckets
+
+  ingest(raw: string): void {
+    let row: Partial&lt;TraceLine&gt;;
+    try { row = JSON.parse(raw) as Partial&lt;TraceLine&gt;; } catch { this.skipped++; return; }
+    const { t, op, key, size } = row;
+    if (typeof t !== 'number' || typeof op !== 'string' || typeof key !== 'number' || typeof size !== 'number' || size &lt; 1) { this.skipped++; return; }
+    this.lines++;
+    if (op === 'read') this.reads++;
+    this.minT = Math.min(this.minT, t);
+    this.maxT = Math.max(this.maxT, t);
+    const sec = Math.floor(t);
+    this.perSecond.set(sec, (this.perSecond.get(sec) ?? 0) + 1);
+    this.keys.add(key);
+    const bucket = Math.min(this.sizeBuckets.length - 1, Math.ceil(Math.log2(size)));
+    this.sizeBuckets[bucket] = (this.sizeBuckets[bucket] ?? 0) + 1;
+  }
+
+  profile(): StreamProfile {
+    if (this.lines === 0) throw new Error('No valid trace lines.');
+    const mean = this.lines / Math.max(this.maxT - this.minT, 1);
+    const peak = Math.max(...this.perSecond.values());
+    const threshold = Math.ceil(this.lines * 0.99);
+    let running = 0;
+    let p99 = 0;
+    for (let i = 0; i &lt; this.sizeBuckets.length; i++) {
+      running += this.sizeBuckets[i] ?? 0;
+      if (running &gt;= threshold) { p99 = 2 ** i; break; }
+    }
+    return {
+      lines: this.lines, skipped: this.skipped, meanRps: round(mean), peakRps: peak,
+      peakToMean: round(peak / mean), readRatio: round(this.reads / this.lines),
+      topKeys: this.keys.top(5), sizeP99UpperBound: p99,
+    };
+  }
+}
+
+const round = (x: number): number =&gt; Math.round(x * 100) / 100;
+
+export async function profileFile(path: string): Promise&lt;StreamProfile&gt; {
+  const profiler = new Profiler();
+  const lines = createInterface({ input: createReadStream(path), crlfDelay: Infinity });
+  for await (const line of lines) if (line.trim()) profiler.ingest(line);
+  return profiler.profile();
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const path = process.argv[2];
+  if (!path) { console.error(JSON.stringify({ level: 'error', msg: 'usage: pnpm start &lt;trace.ndjson&gt;' })); process.exit(2); }
+  profileFile(path).then(
+    (p) =&gt; { console.log(JSON.stringify(p, null, 2)); },
+    (err: unknown) =&gt; { console.error(JSON.stringify({ level: 'error', msg: 'profile.failed', error: String(err) })); process.exit(1); },
+  );
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Generate a synthetic request trace, then characterize it the way you would a production log.
+
+The generator is seeded so results repeat. Traffic follows a daily sine curve with a burst, keys
+follow a Zipf-like popularity distribution, and sizes are lognormal. The analyzer reports the
+numbers a design needs: rates, peak-to-mean ratio, read ratio, key skew, and size percentiles.
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import argparse
+import json
+import math
+import random
+from bisect import bisect_left
+from collections import Counter
+from itertools import accumulate
+
+from pydantic import BaseModel, Field
+
+
+class Request(BaseModel):
+    t: float  # seconds since trace start
+    op: str
+    key: int
+    size: int
+
+
+class Profile(BaseModel):
+    requests: int
+    duration_s: float
+    mean_rps: float
+    peak_rps: int
+    peak_to_mean: float
+    read_ratio: float
+    distinct_keys: int
+    top_1pct_key_share: float
+    size_p50: int
+    size_p99: int
+
+
+class GeneratorConfig(BaseModel):
+    seed: int = 7
+    duration_s: int = Field(default=3_600, gt=0)
+    mean_rps: float = Field(default=50, gt=0)
+    keys: int = Field(default=10_000, gt=0)
+    zipf_s: float = Field(default=1.0, ge=0)
+    read_ratio: float = Field(default=0.9, ge=0, le=1)
+    burst_at_s: int = 1_800
+    burst_len_s: int = 60
+    burst_multiplier: float = 5
+
+
+def generate(cfg: GeneratorConfig) -&gt; list[Request]:
+    rng = random.Random(cfg.seed)
+    cdf = list(accumulate(1 / (rank**cfg.zipf_s) for rank in range(1, cfg.keys + 1)))
+    total = cdf[-1]
+    out: list[Request] = []
+    for second in range(cfg.duration_s):
+        # One full sine cycle over the trace, plus a short burst.
+        rate = cfg.mean_rps * (1 + 0.5 * math.sin(2 * math.pi * second / cfg.duration_s))
+        if cfg.burst_at_s &lt;= second &lt; cfg.burst_at_s + cfg.burst_len_s:
+            rate *= cfg.burst_multiplier
+        for _ in range(_poisson(rng, rate)):
+            out.append(Request(
+                t=second + rng.random(),
+                op=&quot;read&quot; if rng.random() &lt; cfg.read_ratio else &quot;write&quot;,
+                key=bisect_left(cdf, rng.random() * total),
+                size=max(1, int(rng.lognormvariate(8, 1))),
+            ))
+    return out
+
+
+def _poisson(rng: random.Random, lam: float) -&gt; int:
+    # A normal approximation is accurate for the rates used here and avoids an O(lam) loop.
+    return max(0, round(rng.gauss(lam, math.sqrt(lam))))
+
+
+def percentile(sorted_values: list[int], q: float) -&gt; int:
+    return sorted_values[min(len(sorted_values) - 1, math.ceil(q * len(sorted_values)) - 1)]
+
+
+def characterize(trace: list[Request]) -&gt; Profile:
+    if not trace:
+        raise ValueError(&quot;cannot characterize an empty trace&quot;)
+    per_second = Counter(int(r.t) for r in trace)
+    duration = max(r.t for r in trace) - min(r.t for r in trace)
+    mean = len(trace) / max(duration, 1)
+    peak = max(per_second.values())
+    keys = Counter(r.key for r in trace)
+    top_n = max(1, len(keys) // 100)
+    top_share = sum(c for _, c in keys.most_common(top_n)) / len(trace)
+    sizes = sorted(r.size for r in trace)
+    return Profile(
+        requests=len(trace),
+        duration_s=round(duration, 1),
+        mean_rps=round(mean, 1),
+        peak_rps=peak,
+        peak_to_mean=round(peak / mean, 2),
+        read_ratio=round(sum(r.op == &quot;read&quot; for r in trace) / len(trace), 3),
+        distinct_keys=len(keys),
+        top_1pct_key_share=round(top_share, 3),
+        size_p50=percentile(sizes, 0.50),
+        size_p99=percentile(sizes, 0.99),
+    )
+
+
+def main(argv: list[str] | None = None) -&gt; int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(&quot;--seed&quot;, type=int, default=7)
+    parser.add_argument(&quot;--zipf&quot;, type=float, default=1.0, help=&quot;key skew; 0 is uniform&quot;)
+    parser.add_argument(&quot;--export&quot;, help=&quot;write the trace as NDJSON for the TypeScript analyzer&quot;)
+    args = parser.parse_args(argv)
+    trace = generate(GeneratorConfig(seed=args.seed, zipf_s=args.zipf))
+    if args.export:
+        with open(args.export, &quot;w&quot;, encoding=&quot;utf-8&quot;) as fh:
+            for r in sorted(trace, key=lambda x: x.t):
+                fh.write(r.model_dump_json() + &quot;\n&quot;)
+    print(json.dumps(characterize(trace).model_dump(), indent=2))
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/workload-characterization-and-traffic-modeling/examples/python
+uv sync --quiet</code></pre>
+<h3 id="run">Run</h3>
+<p>Characterize the default skewed trace, and write it out:</p>
+<pre class="code"><code class="language-bash">uv run python -m app.main --export /tmp/trace.ndjson | jq '{mean_rps, peak_rps, peak_to_mean, read_ratio, top_1pct_key_share, size_p50, size_p99}'</code></pre>
+<p>Compare with uniform keys:</p>
+<pre class="code"><code class="language-bash">uv run python -m app.main --zipf 0 | jq '{top_1pct_key_share}'</code></pre>
+<p>Profile the same file using the bounded-memory analyzer:</p>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm install --ignore-workspace --silent &amp;&amp; pnpm --silent start /tmp/trace.ndjson | jq '{meanRps, peakRps, peakToMean, readRatio, topKeys: .topKeys[:2], sizeP99UpperBound}'</code></pre>
+<p>Try it on your own logs. This extracts per-second peak from a common access-log format:</p>
+<pre class="code"><code class="language-bash">awk '{print $4}' access.log | sort | uniq -c | sort -rn | head -5</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>Measured with the default seed on the review date: about 192,000 requests, a mean of 53.3 rps, a peak of 273 rps, a peak-to-mean ratio of 5.12, and a read ratio of 0.90. The top 1% of keys get 52.6% of the traffic, while <code>--zipf 0</code> drops that to 1.7%. The median size is about 3,000 bytes and p99 about 30,000 bytes, so the tail is ten times the median. The TypeScript profile agrees on rates and read ratio, and its <code>sizeP99UpperBound</code> of 32,768 is the next power of two above the exact p99. Your exact values may differ slightly with another Python version.</p>
+<h3 id="cleanup">Cleanup</h3>
+<pre class="code"><code class="language-bash">rm -f /tmp/trace.ndjson &amp;&amp; rm -rf node_modules ../python/.venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li>The <code>access.log</code> command fails if you have no such file, and it assumes the timestamp is in field 4.</li><li><code>No valid trace lines</code>: run the export step first and check the file path.</li><li>The generator takes a few seconds, since it creates about 192,000 records as validated models.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Same mean, different system</h3><p>Two services each average 1,000 rps. Service A has a PMR of 1.2, reads are uniform across keys, and all objects are 1 KB. Service B has a PMR of 8, 1% of keys get half the reads, and sizes span 1 KB to 50 MB. What would you design differently for B?</p><details class="disclosure"><summary>Hint</summary><p>Consider each difference on its own: time, keys, and size.</p></details><details class="disclosure"><summary>Solution</summary><p>For the PMR of 8: autoscaling alone may be too slow, so add queues for deferrable work and headroom. For skew: a small cache captures much traffic, but hot keys need special handling so that they do not overload one partition. For size: send large objects via a separate path such as object storage and a CDN, since they would otherwise block workers and distort latency. Service A may be fine with a simple pool of instances and no cache at all.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Giving only &quot;add more servers&quot;. Treating skew as purely bad, when it is what makes caching effective.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> The hourly mystery</h3><p>Your dashboard, which uses 5-minute averages, shows 40% CPU at all times, yet users report errors at the top of each hour. How would you find the cause, using only access logs and the Python tool?</p><details class="disclosure"><summary>Hint</summary><p>Change the resolution. Then fold time by minute of hour.</p></details><details class="disclosure"><summary>Solution</summary><p>Compute rate per second around the hour boundary: the 5-minute average hides a 20-second spike. Group by client type and route during those seconds, which likely shows a synchronized source such as app polling or a cron fleet. Confirm the peak-to-mean at 1 second. Fix through jitter, and protect the service using a per-client limit. Update dashboards to include a 1-second maximum.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Adding capacity before finding the source. Blaming a dependency without segmenting the traffic.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Forecast the shard count</h3><p>Current state: 20,000 reads per second mean, 1-minute PMR of 2.5, 90% hit rate, and 5% monthly growth. Each shard handles 1,000 reads per second safely. How many shards in 18 months, with 25% headroom? How many if the hit rate drops to 80%?</p><details class="disclosure"><summary>Hint</summary><p>Growth factor is 1.05^18. Headroom means dividing by 0.75.</p></details><details class="disclosure"><summary>Solution</summary><p>1.05^18 = 2.41. Mean: 48,130 per second. Peak: 120,325. At 90% hit rate: 12,033 database reads, 12.03 shards, ÷ 0.75 = 16.04, so 17 shards. At 80%: 24,065, ÷ 1,000 = 24.07, ÷ 0.75 = 32.1, so 33 shards. A 10-point hit-rate drop doubles the database load, so it nearly doubles shard count.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Applying growth to the peak twice. Treating hit rate as fixed when it depends on data size and skew.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> Characterize a system that does not exist yet</h3><p>You are launching a collaborative whiteboard. No traffic exists. Write a workload model with parameters, what evidence backs each one, and how you would replace estimates with data in the first 30 days.</p><details class="disclosure"><summary>Hint</summary><p>Consider sessions: the number of participants, the operations per second per participant, and how long a board lives.</p></details><details class="disclosure"><summary>Solution</summary><p>Parameters: concurrent boards; 3 participants per board on average with a heavy tail; 2 operations per second per active user; 100-byte ops; 45-minute sessions; 9 a.m. to 5 p.m. weekday peaks, PMR 4. Evidence: comparable product public figures if available, a beta group, and a stated guess otherwise, with low, base, and high values. Instrument participant counts, operation rates, and board sizes on day one. Compare at 7 and 30 days, and find the largest deviation. Also test the tail: a 500-person board has very different fan-out, since messages grow with the square of participants if every operation goes to everyone.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Giving one point estimate. Modeling only the average board. Ignoring fan-out.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> The traffic that was not users</h3><p>At 14:10, traffic triples and the database saturates. The marketing team confirms no campaign is running. What do you do in the first 15 minutes, using traffic characterization?</p><details class="disclosure"><summary>Hint</summary><p>Segment first. Then compare the shape of this traffic with normal traffic.</p></details><details class="disclosure"><summary>Solution</summary><p>Declare an incident. Segment by route, client, IP range, user agent, and tenant. Check the retry rate, because this could be self-inflicted. Compare the key distribution: a scraper walks keys uniformly, which destroys cache hit rate and explains why the database suffers more than the traffic rise alone would suggest. If it is one source, apply a limit at the edge. If it is retries, reduce them with a client or gateway limit. Keep the sample for later analysis, and then add a dashboard for hit rate and top clients. See DDoS protection <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Scaling up the database first. Assuming it is an attack before checking for your own retries.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<p>Few formal standards exist for workload modeling. For measurement mechanics, see <a href="https://www.w3.org/TR/trace-context/" rel="noopener noreferrer">W3C Trace Context</a>, November 2021, for correlating requests, and <a href="https://opentelemetry.io/docs/specs/semconv/http/" rel="noopener noreferrer">OpenTelemetry semantic conventions for HTTP</a>, a living specification for field names. <a href="https://www.rfc-editor.org/rfc/rfc9110.html" rel="noopener noreferrer">RFC 9110</a>, June 2022, defines the HTTP semantics such logs record.</p>
+<h3 id="established-practice">Established practice</h3>
+<p>Research that shaped common practice includes <a href="https://doi.org/10.1145/1807128.1807152" rel="noopener noreferrer">YCSB</a>, Cooper et al., 2010, a benchmark framework with skewed key distributions; <a href="https://doi.org/10.1145/2254756.2254766" rel="noopener noreferrer">Workload Analysis of a Large-Scale Key-Value Store</a>, Atikoglu et al., 2012, based on real Memcached traces; and <a href="https://doi.org/10.1109/90.392383" rel="noopener noreferrer">Wide Area Traffic: The Failure of Poisson Modeling</a>, Paxson and Floyd, 1995. Findings in those papers are specific to the systems they studied, so measure your own.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Cloud load balancers export access logs to object storage, which can be queried using warehouse engines. Observability vendors provide aggregations, usually sampled. Check how sampling affects tails and rare keys before you rely on them.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>eBPF-based collection captures traffic data without application changes. AI workloads are changing assumptions, since requests may run for minutes and cost depends on token counts rather than on request counts, so rate alone describes them poorly. This is an observation from public systems, without a settled modeling standard.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>OpenTelemetry's HTTP semantic conventions were declared stable in 2023, making field names more consistent across tools. Verify the version in use by your instrumentation.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Log retention costs and privacy rules limit how much raw data you can keep. Sampling reduces cost and damages tail analysis. Start with load-balancer logs, since they need no code changes.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> Why are averages misleading for capacity planning?</summary><p><strong>Strong answer.</strong> Systems fail at peaks and on skewed resources. A 1,000 rps mean could involve 8,000 rps peaks with most traffic on a few keys, and queueing depends on variation too. I state rates at a stated window, along with PMR and skew.</p>
+<p><strong>Why it is asked.</strong> It is a basic signal of production experience.</p>
+<p><strong>Weak-answer warning signs.</strong> Using daily average as capacity, or multiplying by a generic factor with no reasoning.</p>
+<p><strong>Follow-up.</strong> How does the window you choose change PMR?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is a read/write ratio used for?</summary><p><strong>Strong answer.</strong> It determines whether replicas and caches help, and which storage engine fits. At 100 to 1, read scaling dominates. At 1 to 10, like telemetry, writes need batching and partitioning. Ratios need checking per route, since aggregate figures can mislead.</p>
+<p><strong>Why it is asked.</strong> It is usually among the first design questions.</p>
+<p><strong>Weak-answer warning signs.</strong> Reciting a ratio with no design consequence.</p>
+<p><strong>Follow-up.</strong> How would a write-heavy path change your storage choice?</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is key skew?</summary><p><strong>Strong answer.</strong> Some keys get far more traffic than others, often following a Zipf-like pattern. This helps caching since few keys cover most reads, but it harms partitioning because hot keys overload one shard.</p>
+<p><strong>Why it is asked.</strong> It leads into caching and sharding discussions.</p>
+<p><strong>Weak-answer warning signs.</strong> Thinking hash partitioning fully removes hot spots.</p>
+<p><strong>Follow-up.</strong> How do you detect a hot key without tracking all keys?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> What is the difference between open and closed workloads, and why does it matter?</summary><p><strong>Strong answer.</strong> In an open workload, arrivals do not depend on completions. In a closed one, a fixed set of clients wait for each response. A closed test slows itself when the server slows, so it hides overload and tail problems that real open traffic would create. That is related to coordinated omission.</p>
+<p><strong>Why it is asked.</strong> It distinguishes real load-testing experience.</p>
+<p><strong>Weak-answer warning signs.</strong> Never having heard the distinction, or trusting thread-based results at face value.</p>
+<p><strong>Follow-up.</strong> Is a mobile app's traffic open or closed? Why might it be mixed?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> What data would you collect for a workload profile, and from where?</summary><p><strong>Strong answer.</strong> Rates at several resolutions, operation mix, key and tenant skew, size distributions, session length, and fan-out. The load balancer is good for external truth, including failures. Traces give fan-out, and datastore logs give query shape. I would cover at least a full weekly cycle.</p>
+<p><strong>Why it is asked.</strong> It reveals whether you can actually do the measurement.</p>
+<p><strong>Weak-answer warning signs.</strong> Relying on application logs only, which miss timeouts and rejected requests.</p>
+<p><strong>Follow-up.</strong> How do you sample without destroying the signal?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How do you estimate top keys in a stream with billions of events?</summary><p><strong>Strong answer.</strong> I would use a bounded summary: Space-Saving with k counters has error at most n ÷ k, or a Count-Min sketch with a heap. I would run these per node and merge, accepting some approximation, then check accuracy against an exact count on a sample.</p>
+<p><strong>Why it is asked.</strong> It connects statistics to practical data structures.</p>
+<p><strong>Weak-answer warning signs.</strong> Proposing an exact hash map of all keys at that scale.</p>
+<p><strong>Follow-up.</strong> How would you merge summaries from 100 nodes?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> A load test passes at twice peak, but production fails at normal peak. What do you check?</summary><p><strong>Strong answer.</strong> I compare the shapes: key distribution, cache hit rate, data size, object sizes, open versus closed generation, and background jobs. I check resource use in test against production at the same rate. Usually the generator is uniform and cache-friendly in the wrong way, or data is too small.</p>
+<p><strong>Why it is asked.</strong> It is a common real-world failure.</p>
+<p><strong>Weak-answer warning signs.</strong> Blaming the test environment in general, with no specific comparison.</p>
+<p><strong>Follow-up.</strong> How would you validate the new test?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you forecast capacity for a product with seasonal peaks and launches?</summary><p><strong>Strong answer.</strong> I would separate baseline trend from seasonality and known events, using two or more years of history where it exists. Then I would add planned launches from a product calendar, with ranges. I would track forecast error and use it to set headroom. Decisions depend on lead times: hardware commitments need a longer horizon than autoscaling.</p>
+<p><strong>Why it is asked.</strong> Staff engineers own multi-quarter capacity decisions.</p>
+<p><strong>Weak-answer warning signs.</strong> Using a single growth rate and no error tracking.</p>
+<p><strong>Follow-up.</strong> How does the forecast change your purchase of committed capacity?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How do you find and handle a dominant tenant in a multi-tenant system?</summary><p><strong>Strong answer.</strong> I attribute traffic and resource cost to a tenant, then look at the share of the top tenants. If one drives a large share, I may set quotas, dedicate capacity, or put that tenant in its own cell. I also check its usage against its contract, since this is a commercial conversation too.</p>
+<p><strong>Why it is asked.</strong> Tenant skew is a common cause of cross-customer outages.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating tenants as uniform, or applying a global limit that penalizes everyone.</p>
+<p><strong>Follow-up.</strong> How do you measure cost per tenant when resources are shared?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> Fan-out has been growing. Why is it a problem, and how would you notice?</summary><p><strong>Strong answer.</strong> Each external request becoming more internal calls multiplies load on shared services and worsens tail latency, since a request waits for its slowest call. Sampled traces show calls per request by route over time. I would set a budget for each critical route, and review growth in design reviews.</p>
+<p><strong>Why it is asked.</strong> Internal amplification is often invisible until it causes failures.</p>
+<p><strong>Weak-answer warning signs.</strong> Only monitoring external request rates.</p>
+<p><strong>Follow-up.</strong> Fan-out doubled but external traffic did not change. Who owns the fix?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> How would you build workload modeling into the organization?</summary><p><strong>Strong answer.</strong> Make a profile a standard artifact of tier-1 services, produced automatically from load balancer logs, and required for capacity requests and launch reviews. Give product a route to provide events to the forecast, measure forecast error, and publish it per team. I would keep the required part small and let teams go deeper where it pays.</p>
+<p><strong>Why it is asked.</strong> It tests turning a practice into a system.</p>
+<p><strong>Weak-answer warning signs.</strong> Proposing one heroic central analysis, or a heavy process for all services.</p>
+<p><strong>Follow-up.</strong> How would you show this investment is worthwhile?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> Modeling says you need 50% more capacity, costing millions. Leadership doubts the forecast. How do you handle it?</summary><p><strong>Strong answer.</strong> I would show past forecast accuracy, the range rather than a point, and what each decision costs if wrong in each direction: under-provisioned during a peak or stranded capacity. I would look at cheaper alternatives such as cutting fan-out, removing abusive traffic, or staging purchases against leading indicators. Then I would let leadership pick the risk, with a checkpoint date.</p>
+<p><strong>Why it is asked.</strong> Principals connect technical models to business decisions under uncertainty.</p>
+<p><strong>Weak-answer warning signs.</strong> Defending the model as if it were fact, or giving no options.</p>
+<p><strong>Follow-up.</strong> Actual growth comes in 30% below forecast. What do you do with this result?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Describe workloads by rate, mix, distribution, size, and time.</li><li>State a window with every rate. PMR at 1 second differs greatly from PMR at 1 minute.</li><li>Skew helps caches and hurts partitions.</li><li>Heavy tails make averages misleading.</li><li>Closed-loop tests hide overload that open traffic causes.</li><li>A model is unproven until generated traffic reproduces production resource use.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Does the data cover a full weekly cycle and known events?</li><li>Have I segmented by route, tenant, region, and client?</li><li>Do I know PMR at two or more resolutions?</li><li>Do I know top-key share and per-partition imbalance?</li><li>Do forecasts include a range and a calendar of events?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Rate, size, and partition metrics exist per route.</li><li>Traffic can be attributed to a client or tenant.</li><li>Clients use jitter and scheduled jobs are spread out.</li><li>Load tests are validated against production resource use.</li><li>Sensitive fields are scrubbed before analysis.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>PMR:</strong> peak-to-mean ratio, for a stated window.</li><li><strong>Zipf:</strong> a distribution in which frequency falls as a power of rank.</li><li><strong>Heavy tail:</strong> rare large values account for a significant share of the total.</li><li><strong>Working set:</strong> the data accessed in a window.</li><li><strong>Open workload:</strong> arrivals independent of completions.</li><li><strong>Fan-out:</strong> internal calls per external request.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="2"><fieldset><legend>1. Hash partitioning distributes keys evenly. What does this guarantee about load?</legend><label><input type="radio" name="quiz-0" value="0"> Load will be even.</label><label><input type="radio" name="quiz-0" value="1"> Load will be even after a rebalance.</label><label><input type="radio" name="quiz-0" value="2"> Nothing about load, because keys can differ greatly in traffic.</label><label><input type="radio" name="quiz-0" value="3"> Reads will be even but writes will not be.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Nothing about load, because keys can differ greatly in traffic..</p><p>Hashing spreads keys, not requests. A single popular key can saturate a partition.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. Why does a closed-loop load generator hide overload?</legend><label><input type="radio" name="quiz-1" value="0"> It sends too many requests.</label><label><input type="radio" name="quiz-1" value="1"> It uses too few keys.</label><label><input type="radio" name="quiz-1" value="2"> Its clients wait for responses, so its arrival rate falls as the server slows.</label><label><input type="radio" name="quiz-1" value="3"> It does not record errors.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Its clients wait for responses, so its arrival rate falls as the server slows..</p><p>Real open traffic keeps arriving when the server slows, so queues grow. A closed test reduces its own pressure.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>3. With a mean of 30,000 rps, a PMR of 3.4, and an 85% hit rate, what is the peak database read rate?</legend><label><input type="radio" name="quiz-2" value="0"> 4,500</label><label><input type="radio" name="quiz-2" value="1"> 15,300</label><label><input type="radio" name="quiz-2" value="2"> 25,500</label><label><input type="radio" name="quiz-2" value="3"> 102,000</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 15,300.</p><p>30,000 × 3.4 = 102,000, and 102,000 × 0.15 = 15,300 reads per second to the database.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>4. Which tool suits finding top keys in billions of events using bounded memory?</legend><label><input type="radio" name="quiz-3" value="0"> An exact hash map.</label><label><input type="radio" name="quiz-3" value="1"> Sorting the log.</label><label><input type="radio" name="quiz-3" value="2"> A Space-Saving summary.</label><label><input type="radio" name="quiz-3" value="3"> A daily average.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> A Space-Saving summary..</p><p>Space-Saving uses a fixed number of counters and bounds its error by n ÷ k.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>5. A dashboard with 5-minute averages shows 40% CPU, yet errors appear at the top of each hour. What is the most likely explanation?</legend><label><input type="radio" name="quiz-4" value="0"> The dashboard is broken.</label><label><input type="radio" name="quiz-4" value="1"> Short synchronized spikes are hidden by the averaging window.</label><label><input type="radio" name="quiz-4" value="2"> CPU does not matter.</label><label><input type="radio" name="quiz-4" value="3"> Traffic is uniform.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> Short synchronized spikes are hidden by the averaging window..</p><p>Averaging over 5 minutes hides a 20-second burst. Look at per-second data, folded by minute of the hour.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Continue with <a href="../../topics/back-of-the-envelope-capacity-estimation/index.html">Back-of-the-envelope capacity estimation</a> to convert a profile into capacity, Little’s Law and practical queueing theory <span class="muted">(not yet written)</span> for how variation creates queues, and Hot keys, hot partitions, and rebalancing <span class="muted">(not yet written)</span> for handling the hot keys this lesson reveals. Benchmark design and coordinated omission <span class="muted">(not yet written)</span> covers making tests reproduce these shapes faithfully.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/constraints-assumptions-and-architecture-drivers/index.html">Constraints, assumptions, and architecture drivers</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span>Next: <a href="../../topics/latency/index.html">Latency</a></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

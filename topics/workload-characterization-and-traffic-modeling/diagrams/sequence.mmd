@@ -1,0 +1,18 @@
+---
+title: "Sequence: refreshing a profile before a launch"
+---
+sequenceDiagram
+    participant J as Scheduled job
+    participant L as Log store
+    participant P as Profile store
+    participant O as Service owner
+    participant T as Load test
+    J->>L: Query 7 days of access logs
+    L-->>J: Aggregated rate, mix, and key counts
+    J->>P: Load last profile
+    P-->>J: Prior version
+    J->>J: Compute drift per metric
+    J->>O: Ticket: peak-to-mean rose from 3.1 to 4.6
+    O->>T: Run updated model at forecast peak
+    T-->>O: Saturation at 78 percent of forecast
+    O->>P: Publish new profile and capacity action

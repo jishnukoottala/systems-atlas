@@ -1,0 +1,15 @@
+---
+title: "Sequence: deadline propagation along the path"
+---
+sequenceDiagram
+    participant G as Gateway
+    participant C as Cart
+    participant F as Fraud
+    participant P as Payment provider
+    G->>C: Deadline: 295 ms remaining
+    C->>F: Deadline: 255 ms remaining
+    Note over F: Enough time for the full model
+    F-->>C: Score after 90 ms
+    C->>P: Remaining 165 ms, reserve 15 ms for write
+    P-->>C: Authorized after 120 ms
+    C-->>G: Complete with 30 ms to spare

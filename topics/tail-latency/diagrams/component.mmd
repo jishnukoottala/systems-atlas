@@ -1,0 +1,18 @@
+---
+title: "Component view of the hedging library and the simulation"
+---
+flowchart LR
+    subgraph ts["TypeScript: hedged library"]
+      F["hedged(call, options)"] --> T["Hedge timer"]
+      T --> B["HedgeBudget: ratio and cap"]
+      F --> AC["AbortController per copy"]
+      AC --> W["First success resolves, losers aborted"]
+    end
+    subgraph py["Python: simulation"]
+      L["Leaf model: fast or slow"] --> S1["fan_out"]
+      L --> S2["hedged"]
+      L --> S3["partial"]
+      S1 --> O["Percentiles, slow fraction, load, completeness"]
+      S2 --> O
+      S3 --> O
+    end

@@ -1,0 +1,11 @@
+---
+title: "Life of an estimate from guess to measurement"
+---
+stateDiagram-v2
+    [*] --> Rough: assumptions stated
+    Rough --> Reviewed: second route and peer check
+    Reviewed --> Rough: assumption challenged
+    Reviewed --> Used: drives a design decision
+    Used --> Tested: load test supplies per-server numbers
+    Tested --> Measured: production traffic replaces estimates
+    Measured --> Rough: next feature or growth estimate

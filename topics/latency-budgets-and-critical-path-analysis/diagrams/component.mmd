@@ -1,0 +1,15 @@
+---
+title: "Component view of the analyzer and simulation"
+---
+flowchart LR
+    subgraph ts["TypeScript: fixed durations"]
+      S["Step list"] --> TO["topoSort: rejects cycles"]
+      TO --> FB["Forward and backward passes"]
+      FB --> CP["Critical path and slack"]
+      FB --> WI["whatIf: saving from a change"]
+    end
+    subgraph py["Python: distributions"]
+      D["Dependency distributions"] --> MC["Monte Carlo: 100,000 trials"]
+      MC --> R["Sum vs independent vs correlated vs parallel"]
+      MC --> DL["Deadline: success rate and time spent"]
+    end

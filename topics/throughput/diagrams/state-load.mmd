@@ -1,0 +1,12 @@
+---
+title: "System operating regions as offered load rises"
+---
+stateDiagram-v2
+    [*] --> Underloaded: throughput equals offered load
+    Underloaded --> NearCapacity: load nears bottleneck
+    NearCapacity --> Underloaded: load falls
+    NearCapacity --> Shedding: overload with bounded queue
+    NearCapacity --> Collapse: overload with unbounded queue
+    Shedding --> NearCapacity: load falls
+    Collapse --> Collapse: retries sustain the queue
+    Collapse --> NearCapacity: load removed and queue drained

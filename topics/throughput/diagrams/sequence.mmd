@@ -1,0 +1,15 @@
+---
+title: "Sequence: wasted work under an unbounded queue"
+---
+sequenceDiagram
+    participant C as Client
+    participant Q as Queue
+    participant W as Worker
+    C->>Q: Request A
+    Note over Q: Queue wait exceeds 200 ms
+    C--xQ: Deadline passes, client gives up
+    C->>Q: Retry A2 joins the back of the queue
+    Q->>W: Start original A
+    W-->>Q: A done, but nobody is waiting
+    Note over W: Counted in throughput, not goodput
+    Q->>W: Start A2, which is also late

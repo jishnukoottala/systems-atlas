@@ -1,0 +1,11 @@
+---
+title: "Component view of the estimator and unit-safe library"
+---
+flowchart LR
+    C["curl or CI job"] -->|"HTTP POST /estimate, JSON"| F["FastAPI route"]
+    F --> V["Pydantic Workload: validation"]
+    V --> ES["estimate function"]
+    ES --> ST["Steps: name, formula, value, unit"]
+    ST -->|"JSON"| C
+    TSC["TypeScript compiler"] --> BR["Branded types: Bytes, PerSecond, BitsPerSecond"]
+    BR -->|"mismatch is a compile error"| X["Unit errors rejected before run"]

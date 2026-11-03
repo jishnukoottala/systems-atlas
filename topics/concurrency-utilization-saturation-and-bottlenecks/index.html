@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Concurrency, utilization, saturation, and bottlenecks | Systems Atlas</title>
+<meta name="description" content="Concurrency is the number of requests in progress at one moment. Utilization is the fraction of time a resource is busy. Saturation is the amount of work waitin">
+<script>try{var s=JSON.parse(localStorage.getItem('principal-system-design-curriculum:v1')||'{}');if(s.theme==='light'||s.theme==='dark')document.documentElement.dataset.theme=s.theme}catch(e){}document.documentElement.classList.add('js')</script>
+<link rel="stylesheet" href="../../assets/styles.css">
+<script defer src="../../assets/progress.js"></script><script defer src="../../assets/app.js"></script><script defer src="../../assets/mermaid.min.js"></script><script defer src="../../assets/mermaid-init.js"></script>
+</head>
+<body data-topic-id="A006">
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="site-header">
+  <a class="brand" href="../../index.html">Systems Atlas</a>
+  <nav aria-label="Primary">
+    <a href="../../index.html">Curriculum</a>
+    <a href="../../systems-dissect/index.html">Systems</a>
+    <a href="../../traceability.html">Traceability</a>
+  </nav>
+  <label class="theme-control js-only">Theme
+    <select id="theme-select"><option value="system">System</option><option value="light">Light</option><option value="dark">Dark</option></select>
+  </label>
+</header>
+<div class="topic-layout" id="top">
+<nav class="toc" aria-label="On this page"><details open><summary>On this page</summary><ol><li><a href="#orientation">Orientation</a></li><li><a href="#production-scenario">Production scenario</a></li><li><a href="#mental-model">Mental model</a></li><li><a href="#foundations">Foundations</a></li><li><a href="#mechanism">Mechanism</a></li><li><a href="#architecture">Architecture</a></li><li><a href="#trade-offs">Trade-offs</a></li><li><a href="#capacity-planning">Capacity planning</a></li><li><a href="#failure-modes">Failure modes</a></li><li><a href="#security-and-privacy">Security and privacy</a></li><li><a href="#observability">Observability</a></li><li><a href="#implementation">Implementation</a></li><li><a href="#terminal-lab">Terminal lab</a></li><li><a href="#practical-challenges">Practical challenges</a></li><li><a href="#industry-standards-and-trends">Industry standards and trends</a></li><li><a href="#interview-preparation">Interview preparation</a></li><li><a href="#review">Review</a></li><li><a href="#progress">Progress</a></li></ol></details></nav>
+<main class="topic-main" id="main">
+<p class="breadcrumb"><a href="../../index.html">Curriculum</a> / Design method and quantitative reasoning</p>
+<h1>Concurrency, utilization, saturation, and bottlenecks</h1>
+<p class="meta-line">A006 · Intermediate · about 1.5 hours · Last reviewed 2026-11-03</p>
+<section aria-labelledby="orientation"><h2 id="orientation">Orientation</h2>
+<h3 id="definition">Definition</h3>
+<p>Concurrency is the number of requests in progress at one moment. Utilization is the fraction of time a resource is busy. Saturation is the amount of work waiting because that resource is fully occupied. A bottleneck is the resource that limits a system's throughput, which is the one that saturates first as load grows.</p>
+<h3 id="why-it-matters">Why it matters</h3>
+<p>These four terms are how you diagnose nearly every performance problem. Each one reveals something the others can't: a server at 40% average CPU may have one core pinned at 100%, and an idle database may be stalled on a single lock. Utilization tells you how close to the limit you are, and saturation tells you that you're past it. Knowing which resource limits you prevents the classic waste of scaling something that was never the constraint, and you can often compute the limit in advance from simple measured numbers.</p>
+<h3 id="prerequisites">Prerequisites</h3><p><a href="../../topics/throughput/index.html">Throughput</a></p><h3 id="study-time">Study time</h3><p>About 1.5 hours, including the terminal lab and challenges. This is an estimate.</p><h3 id="related-topics">Related topics</h3><p>Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>, Golden Signals, RED, and USE methods <span class="muted">(not yet written)</span>, Load shedding and admission control <span class="muted">(not yet written)</span>, <a href="../../topics/throughput/index.html">Throughput</a>, CPU, heap, lock-contention, and I/O profiling <span class="muted">(not yet written)</span></p><h3 id="learning-objectives">Learning objectives</h3>
+<ul><li>Distinguish concurrency, utilization, saturation, and errors, and measure each for a resource.</li><li>Apply the utilization law and bottleneck bound to predict a system's maximum throughput.</li><li>Use Little's Law to convert between rate, latency, and concurrency.</li><li>Identify non-hardware bottlenecks such as locks, pools, and single-threaded loops.</li><li>Protect a bottleneck with a concurrency limit and bounded queue.</li></ul></section>
+<section aria-labelledby="production-scenario"><h2 id="production-scenario">Production scenario</h2>
+<p>An order service at 450 requests per second starts timing out. Average CPU is 45% on web servers, 70% on application servers, and 34% on the database. Disk is at 90%, which draws attention, and the team orders faster disks. Nothing improves. Then someone measures a resource nobody charted: every order updates one row of a global counter, holding its lock for 2.5 ms. Since one lock serves one holder at a time, the maximum is 1 ÷ 0.0025 s = 400 updates per second. At 450 requests per second, that lock's utilization is 112.5%, so its queue grows forever.</p>
+<p>Disk was close to its limit too, but the lock had already hit its own. The fix replaces the single counter with four sub-counters, which are summed when read. Lock capacity rises to 1,600 updates per second, and the bottleneck moves to disk at 500 per second, which is now worth upgrading. The operational analysis example in this lesson reproduces these numbers from measured demand alone, without a load test.</p></section>
+<section aria-labelledby="mental-model"><h2 id="mental-model">Mental model</h2>
+<h3 id="analogy">Analogy</h3>
+<p>Picture a supermarket. Concurrency is how many customers are inside. Utilization is the fraction of time a checkout clerk is scanning. Saturation is the line at the checkouts. The bottleneck is whichever stage has the longest wait relative to its capacity. Opening more aisles doesn't help if there's one clerk. An empty shop with one clerk away on a break has low &quot;CPU&quot; and terrible service, just like a server waiting on a lock.</p>
+<h3 id="where-the-analogy-breaks">Where the analogy breaks</h3>
+<p>You can see a line in a supermarket, but software queues are hidden in kernels, thread pools, locks, and network buffers, so many go unmeasured. Clerks also don't slow one another down as you add more, whereas extra software workers can contend and lower total output. Finally, a shopper in a long line usually waits, whereas a software client times out and retries, adding even more work to the line.</p>
+<h3 id="entities-state-flow-and-invariants">Entities, state, flow, and invariants</h3>
+<ul><li><strong>Entities:</strong> requests, resources, servers per resource, queues.</li><li><strong>State:</strong> busy servers, queue length, throughput.</li><li><strong>Flow:</strong> arrive, wait if all busy, get served, leave, possibly visiting several resources.</li><li><strong>Invariant 1:</strong> U = X × D. Utilization is throughput times service demand.</li><li><strong>Invariant 2:</strong> X ≤ 1 ÷ D_max. Throughput can't exceed what the largest demand allows.</li><li><strong>Invariant 3:</strong> L = X × R. Concurrency is throughput times response time.</li></ul></section>
+<section aria-labelledby="foundations"><h2 id="foundations">Foundations</h2>
+<h3 id="concepts-and-terminology">Concepts and terminology</h3>
+<div class="table-wrap"><table><thead><tr><th scope="col">Term</th><th scope="col">Meaning</th><th scope="col">Example measurement</th></tr></thead><tbody><tr><td>Concurrency (L)</td><td>Requests in progress</td><td>In-flight gauge</td></tr><tr><td>Throughput (X)</td><td>Completions per second</td><td>Request counter rate</td></tr><tr><td>Service time (S)</td><td>Work per visit</td><td>Span duration excluding wait</td></tr><tr><td>Service demand (D)</td><td>Total work per request</td><td>CPU seconds per request</td></tr><tr><td>Utilization (U)</td><td>Fraction of time busy</td><td>CPU busy percentage</td></tr><tr><td>Saturation</td><td>Waiting work</td><td>Queue length, pool wait, run queue</td></tr><tr><td>Errors</td><td>Failed work</td><td>Rejections, timeouts</td></tr><tr><td>Bottleneck</td><td>First resource to saturate</td><td>Highest utilization, longest queue</td></tr></tbody></table></div>
+<h3 id="first-principles-explanation">First-principles explanation</h3>
+<p>Measure a system for a period, and three relationships must hold regardless of the arrival pattern, as they are bookkeeping identities. If a resource completes X requests per second, each taking D seconds of its time, then it is busy X × D of each second, which is the utilization law. Utilization can't exceed 100%, so X can't exceed 1 ÷ D. Therefore the resource with the biggest demand per server is the bottleneck, and it sets the cap on the whole system.</p>
+<p>This is powerful, since you can find the bottleneck from measurements at low load. CPU per request, disk time per request, and lock hold time per request, along with server counts, predict the limit before you ever reach it. Behavior near the limit is the exception, as contention and cache effects can raise demand. So treat the result as an upper bound, and confirm it with a test. See Load, stress, spike, and soak testing <span class="muted">(not yet written)</span>.</p>
+<p>Below the bottleneck's limit, response time stays near the sum of demands. Above it, queues grow. The transition happens near a &quot;knee&quot; of concurrency, N* = (ΣD + Z) ÷ D_max, where Z is client think time. Past this knee, adding concurrency only adds waiting.</p>
+<p>Average utilization misleads for three reasons. It averages across time, hiding bursts. It averages across servers or cores, hiding one busy instance or a single-threaded loop: one pinned core of 16 reads as 6.25%. And it hides logical resources entirely, such as locks and pools, which have no OS-level utilization metric. Saturation signals are usually more direct: any non-trivial queue on a resource means it's limiting something right now.</p>
+<h3 id="mathematics">Mathematics</h3>
+<p><strong>Utilization law:</strong> U = X × D ÷ c, for c servers. At 300 requests per second with an app-tier demand of 25 ms over 16 cores: 300 × 0.025 ÷ 16 = 46.9%.</p>
+<p><strong>Bottleneck bound:</strong> X_max = min over resources of (c ÷ D).</p>
+<div class="table-wrap"><table><thead><tr><th scope="col">Resource</th><th scope="col">Demand</th><th scope="col">Servers</th><th scope="col">Max rate</th><th scope="col">Utilization at 450 rps</th></tr></thead><tbody><tr><td>Web CPU</td><td>8 ms</td><td>8</td><td>1,000 per second</td><td>45.0%</td></tr><tr><td>App CPU</td><td>25 ms</td><td>16</td><td>640 per second</td><td>70.3%</td></tr><tr><td>Database CPU</td><td>6 ms</td><td>8</td><td>1,333 per second</td><td>33.8%</td></tr><tr><td>Database disk</td><td>4 ms</td><td>2</td><td>500 per second</td><td>90.0%</td></tr><tr><td>Row lock</td><td>2.5 ms</td><td>1</td><td>400 per second</td><td>112.5%</td></tr></tbody></table></div>
+<p><strong>Response floor:</strong> R ≥ ΣD = 8 + 25 + 6 + 4 + 2.5 = 45.5 ms.</p>
+<p><strong>Knee:</strong> N* = 45.5 ÷ 2.5 = 18.2 concurrent requests with zero think time. Beyond that, extra requests wait.</p>
+<p><strong>Little's Law:</strong> L = X × R. At 300 requests per second and 50 ms: 15 in flight. Check it: the knee is 18.2, which means that 300 requests per second sits below it. See Little’s Law and practical queueing theory <span class="muted">(not yet written)</span>.</p>
+<h3 id="complexity">Complexity</h3>
+<p>Operational analysis is O(r) for r resources. A concurrency limiter's acquire and release are O(1) amortized, although the example's <code>Array.shift</code> is O(q) for a queue of length q, which is fine for small bounded queues. Measurement overhead also matters: per-request timing adds little, but heavy lock profiling can distort what it measures.</p></section>
+<section aria-labelledby="mechanism"><h2 id="mechanism">Mechanism</h2>
+<h3 id="normal-path">Normal path</h3>
+<ol><li>A request arrives, and concurrency rises by one.</li><li>If the resource has a free server, service starts.</li><li>Otherwise, it waits in a queue, which is saturation.</li><li>It uses each resource in turn: web CPU, app CPU, database, disk, and locks.</li><li>When done, it leaves, and concurrency falls by one.</li><li>As arrivals approach the bottleneck's rate, its queue grows quickly and response time climbs.</li><li>A limit in front of the bottleneck makes excess work wait outside it, or get rejected.</li></ol>
+<h3 id="state-transitions">State transitions</h3>
+<figure class="diagram" id="diagram-state-resource"><figcaption>States of a resource as load increases</figcaption><pre class="mermaid" role="img" aria-label="State diagram. A resource moves from idle to partly busy, then near saturation with short queues, and to saturated with a growing queue. If a queue limit exists, it rejects excess. If not, waiting grows until timeouts. When load falls, it drains back.">stateDiagram-v2
+    [*] --&gt; Idle
+    Idle --&gt; PartlyBusy: arrivals below capacity
+    PartlyBusy --&gt; NearSaturation: utilization above about 80 percent
+    NearSaturation --&gt; PartlyBusy: load falls
+    NearSaturation --&gt; Saturated: arrivals exceed capacity
+    Saturated --&gt; Rejecting: bounded queue is full
+    Saturated --&gt; TimingOut: unbounded queue grows
+    Rejecting --&gt; NearSaturation: load falls
+    TimingOut --&gt; NearSaturation: load removed and queue drained</pre><p class="diagram-alt"><strong>Text alternative.</strong> State diagram. A resource moves from idle to partly busy, then near saturation with short queues, and to saturated with a growing queue. If a queue limit exists, it rejects excess. If not, waiting grows until timeouts. When load falls, it drains back.</p></figure>
+<p>Saturated resources go one of two ways. <code>Rejecting</code> is a controlled outcome, and recovers once load falls. <code>TimingOut</code> wastes capacity on requests that will never be useful. See <a href="../../topics/throughput/index.html">Throughput</a>. The 80% figure is an illustrative threshold, which varies with variability and server count.</p>
+<h3 id="concurrency-behavior">Concurrency behavior</h3>
+<p>Concurrency limits are often the right control, more so than rate limits, because concurrency reflects true load: a slow dependency raises concurrency for the same request rate. This is Little's Law in action: when response time doubles at a constant rate, concurrency doubles. Concurrency limiting therefore reacts automatically when a dependency slows down, with no need for a new rate setting. See Bulkheads and isolation pools <span class="muted">(not yet written)</span>.</p>
+<h3 id="ordering-and-consistency">Ordering and consistency</h3>
+<p>Queues impose order, and it matters who waits. First-in-first-out is fair, but under overload it serves the oldest requests, which are the most likely to have expired. Last-in-first-out and priority queues can preserve goodput for fresh or important work. Locks affect consistency too: reducing lock scope is the classic throughput gain, but it has to preserve the invariant that the lock protected. See Deadlocks <span class="muted">(not yet written)</span>.</p>
+<h3 id="ownership-of-data-and-control">Ownership of data and control</h3>
+<p>Each shared resource needs an owner who sets its limits. Without one, several teams can each stay &quot;within their rate&quot; while together overloading the same database. The owner of a limit also has to decide who gets rejected, which is a business question as well as a technical one. See Load shedding and admission control <span class="muted">(not yet written)</span>.</p></section>
+<section aria-labelledby="architecture"><h2 id="architecture">Architecture</h2>
+<figure class="diagram" id="diagram-context"><figcaption>Context: resources a request uses and where the queues hide</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Clients reach a load balancer, then web and app servers, each with hidden queues in accept backlogs and thread pools. App servers use a connection pool to a database with CPU, disk, and row locks. A row lock is marked as the bottleneck, and a limiter protects it.">flowchart LR
+    C[&quot;Clients&quot;] --&gt;|&quot;HTTPS&quot;| LB[&quot;Load balancer: accept queue&quot;]
+    LB --&gt; W[&quot;Web tier: 8 cores&quot;]
+    W --&gt; AP[&quot;App tier: 16 cores, thread pool queue&quot;]
+    AP --&gt; LM[&quot;Concurrency limiter: bounded queue&quot;]
+    LM --&gt;|&quot;TCP, connection pool&quot;| DB[&quot;Database, owns data: 8 cores&quot;]
+    DB --&gt; DK[&quot;Disk: 2 volumes&quot;]
+    DB --&gt; RL[&quot;BOTTLENECK: one row lock, 400 per second&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Clients reach a load balancer, then web and app servers, each with hidden queues in accept backlogs and thread pools. App servers use a connection pool to a database with CPU, disk, and row locks. A row lock is marked as the bottleneck, and a limiter protects it.</p></figure>
+<p>Each arrow has a queue that may be invisible on standard dashboards. The bottleneck here is a logical resource that won't appear on an infrastructure graph. The limiter sits in front of the database, so excess work waits or gets rejected in a place where this is cheap, and the bottleneck's own queue stays short.</p>
+<figure class="diagram" id="diagram-component"><figcaption>Component view of the limiter service and the operational analysis</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. An Express route uses a ConcurrencyLimiter with a slot counter and a bounded waiter list, returning 503 when full. A stats route reports concurrency, utilization, and saturation. The Python tool takes resource demands and reports utilization, bottleneck, and maximum throughput.">flowchart LR
+    R[&quot;HTTP GET /query&quot;] --&gt; L[&quot;ConcurrencyLimiter.run&quot;]
+    L --&gt; SL[&quot;Slots: limit 10&quot;]
+    L --&gt; WQ[&quot;Waiters: limit 20&quot;]
+    WQ --&gt;|&quot;queue full&quot;| E[&quot;HTTP 503 with Retry-After&quot;]
+    SL --&gt; WK[&quot;Simulated database work&quot;]
+    L --&gt; ST[&quot;GET /stats: in-flight, utilization, queued, rejected&quot;]
+    IN[&quot;Measured demands and server counts&quot;] --&gt; OA[&quot;Python: analyze&quot;]
+    OA --&gt; RP[&quot;Utilization per resource, bottleneck, X max, knee&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. An Express route uses a ConcurrencyLimiter with a slot counter and a bounded waiter list, returning 503 when full. A stats route reports concurrency, utilization, and saturation. The Python tool takes resource demands and reports utilization, bottleneck, and maximum throughput.</p></figure>
+<p>The Python tool predicts limits, and the TypeScript service enforces one and reports on it. Together they form the working cycle: compute the limit from demands, set the limiter just below it, and verify the prediction using its metrics.</p>
+<figure class="diagram" id="diagram-sequence"><figcaption>Sequence: a limiter under overload</figcaption><pre class="mermaid" role="img" aria-label="Sequence diagram. Requests arrive at a limiter with two slots and a queue of one. The first two start. A third waits. A fourth is rejected at once with 503. When work finishes, the slot passes directly to the waiting request.">sequenceDiagram
+    participant C as Clients
+    participant L as Limiter, 2 slots, queue 1
+    participant D as Database
+    C-&gt;&gt;L: Request 1
+    L-&gt;&gt;D: Start, 1 of 2 slots
+    C-&gt;&gt;L: Request 2
+    L-&gt;&gt;D: Start, 2 of 2 slots
+    C-&gt;&gt;L: Request 3
+    Note over L: Waits in queue, saturation is 1
+    C-&gt;&gt;L: Request 4
+    L--&gt;&gt;C: 503 Retry-After, queue is full
+    D--&gt;&gt;L: Request 1 finished
+    L-&gt;&gt;D: Slot passes to request 3
+    D--&gt;&gt;L: Request 2 finished</pre><p class="diagram-alt"><strong>Text alternative.</strong> Sequence diagram. Requests arrive at a limiter with two slots and a queue of one. The first two start. A third waits. A fourth is rejected at once with 503. When work finishes, the slot passes directly to the waiting request.</p></figure>
+<p>The rejection takes almost no resources, which is what makes it useful during overload. The database never sees more than its limit, so it keeps running at full throughput throughout. Clients need to treat a 503 with <code>Retry-After</code> as &quot;try later&quot;, or retries will undo the protection.</p>
+<figure class="diagram" id="diagram-failure-path"><figcaption>Failure path: scaling the wrong resource</figcaption><pre class="mermaid" role="img" aria-label="Flowchart. Timeouts begin. Disk shows 90 percent utilization, and it gets upgraded, with no effect. The lock is unmeasured and over 100 percent. Measuring lock wait finds the real limit. Splitting the counter moves the bottleneck to disk, and only then does the disk upgrade help.">flowchart TD
+    A[&quot;Timeouts at 450 rps&quot;] --&gt; B[&quot;Dashboards: disk at 90 percent is the highest&quot;]
+    B --&gt; C[&quot;Upgrade disk&quot;]
+    C --&gt; D[&quot;No improvement&quot;]
+    D --&gt; E[&quot;Measure lock wait, previously not charted&quot;]
+    E --&gt; F[&quot;Row lock at 112.5 percent&quot;]
+    F --&gt; G[&quot;Split counter into 4 sub-counters&quot;]
+    G --&gt; H[&quot;Lock limit 1,600 per second&quot;]
+    H --&gt; I[&quot;Bottleneck moves to disk at 500 per second&quot;]</pre><p class="diagram-alt"><strong>Text alternative.</strong> Flowchart. Timeouts begin. Disk shows 90 percent utilization, and it gets upgraded, with no effect. The lock is unmeasured and over 100 percent. Measuring lock wait finds the real limit. Splitting the counter moves the bottleneck to disk, and only then does the disk upgrade help.</p></figure>
+<p>Highest-charted is not the same as highest. The team could only compare what they had measured, so unmeasured resources are the first thing to suspect when a fix doesn't help. The final step shows that fixing a bottleneck always reveals the next, and that's the cue to repeat the analysis.</p></section>
+<section aria-labelledby="trade-offs"><h2 id="trade-offs">Trade-offs</h2>
+<h3 id="advantages">Advantages</h3>
+<ul><li>A small set of signals diagnoses most problems.</li><li>Demand-based bounds give predictions without expensive tests.</li><li>Concurrency limits adapt to slow dependencies automatically.</li></ul>
+<h3 id="costs">Costs</h3>
+<ul><li>Measuring logical resources requires custom instrumentation.</li><li>Running at low utilization to keep queues short costs money.</li><li>Limits reject real users, so choosing them is a business decision.</li><li>Fixed limits go stale as hardware and code change.</li></ul>
+<h3 id="alternatives">Alternatives</h3>
+<ul><li><strong>Rate limiting:</strong> better for fairness and quotas, but slower to respond to dependency slowdowns. See Rate limiting <span class="muted">(not yet written)</span>.</li><li><strong>Adaptive limits:</strong> adjust to latency automatically, at the cost of stability tuning.</li><li><strong>Autoscaling:</strong> adds capacity where the tier can scale, and is too slow for bursts. See Autoscaling <span class="muted">(not yet written)</span>.</li><li><strong>Load testing alone:</strong> finds limits empirically, at greater cost. Use it to confirm predictions.</li></ul>
+<h3 id="when-to-use-it">When to use it</h3>
+<p>For every performance investigation and capacity plan. Add concurrency limits around any shared resource whose overload would hurt others.</p>
+<h3 id="when-not-to-use-it">When not to use it</h3>
+<p>Don't over-instrument a small internal service with no contention. Don't set a tight limit without measuring, as that creates errors that weren't there before. Don't rely on these identities outside steady state, for example in the seconds after a burst or a restart.</p>
+<h3 id="reconsider-when">Reconsider when</h3>
+<ul><li>A fix to the &quot;bottleneck&quot; has no effect.</li><li>Demand per request changes after a code or schema change.</li><li>CPU or disk looks healthy, but latency and queues are climbing.</li><li>Hardware changes make old limits wrong.</li></ul></section>
+<section aria-labelledby="capacity-planning"><h2 id="capacity-planning">Capacity planning</h2>
+<h3 id="inputs-and-assumptions">Inputs and assumptions</h3>
+<p>Measured demands from the table above. Target: 1,000 requests per second at 70% utilization or below. Assume demand stays constant up to that load, which you should verify.</p>
+<h3 id="formula-and-units">Formula and units</h3>
+<ul><li>Servers = rate (requests per second) × demand (seconds) ÷ target utilization.</li><li>Max rate = servers ÷ demand (seconds).</li><li>In flight = rate × response time (seconds).</li></ul>
+<h3 id="intermediate-calculations">Intermediate calculations</h3>
+<ul><li>Web CPU: 1,000 × 0.008 ÷ 0.7 = 11.4, so 12 cores.</li><li>App CPU: 1,000 × 0.025 ÷ 0.7 = 35.7, so 36 cores.</li><li>Database CPU: 1,000 × 0.006 ÷ 0.7 = 8.6, so 9 cores.</li><li>Disk: 1,000 × 0.004 ÷ 0.7 = 5.7, so 6 volumes.</li><li>Row lock: 1,000 × 0.0025 ÷ 0.7 = 3.6, so 4 sub-counters.</li><li>In flight at a 60 ms response: 1,000 × 0.06 = 60, which sets the connection pool's size.</li></ul>
+<h3 id="headroom">Headroom</h3>
+<p>The 70% target is the headroom. A lower target means shorter queues and higher cost. Single-server resources, such as one lock or a single-threaded loop, need more margin than pooled resources, because a pool absorbs variation much better. So the 70% target may be too high for the lock.</p>
+<h3 id="failure-capacity">Failure capacity</h3>
+<p>With three zones, losing one raises per-zone load by 50%. So 36 app cores across three zones become 24, and utilization goes from 70% to 105%. For failure tolerance at 70%: 36 × 3 ÷ 2 = 54 cores. Alternatively, plan to run near 90% during a failure: 1,000 × 0.025 ÷ 0.9 = 27.8 cores surviving, or 42 total. State which you've chosen. The row lock's capacity doesn't change with zones, since it isn't horizontally spread.</p></section>
+<section aria-labelledby="failure-modes"><h2 id="failure-modes">Failure modes</h2>
+<div class="failure"><h3 id="failure-unmeasured-logical-bottleneck">Unmeasured logical bottleneck</h3><dl><dt>Trigger</dt><dd>A lock, pool, semaphore, or quota reaches its limit.</dd><dt>Symptoms</dt><dd>Throughput plateaus, latency climbs, and CPU, memory, and disk all look fine.</dd><dt>Blast radius</dt><dd>Everything that shares the resource.</dd><dt>Detection</dt><dd>Measure wait time on every lock and pool, and compute U = X × D for them.</dd><dt>Mitigation</dt><dd>Limit concurrency in front of it.</dd><dt>Recovery</dt><dd>Split or shorten the critical section.</dd><dt>Prevention</dt><dd>Export saturation metrics for every bounded resource.</dd></dl></div>
+<div class="failure"><h3 id="failure-averages-hide-a-single-threaded-limit">Averages hide a single-threaded limit</h3><dl><dt>Trigger</dt><dd>A single-threaded process or event loop runs on a multi-core machine.</dd><dt>Symptoms</dt><dd>6% average CPU on 16 cores, yet requests are queueing.</dd><dt>Blast radius</dt><dd>All requests handled by that process.</dd><dt>Detection</dt><dd>Check per-core and per-thread CPU, and event-loop lag.</dd><dt>Mitigation</dt><dd>Run more processes or offload blocking work.</dd><dt>Recovery</dt><dd>Fix the blocking work.</dd><dt>Prevention</dt><dd>Monitor event-loop lag and maximum per-thread CPU. See Async I/O and scheduling <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-connection-pool-exhaustion">Connection pool exhaustion</h3><dl><dt>Trigger</dt><dd>A slow dependency raises concurrency beyond the pool size.</dd><dt>Symptoms</dt><dd>Requests wait for connections, and the database itself looks idle.</dd><dt>Blast radius</dt><dd>All routes that share the pool.</dd><dt>Detection</dt><dd>Monitor pool wait time and active connections.</dd><dt>Mitigation</dt><dd>Shed load and shorten timeouts.</dd><dt>Recovery</dt><dd>Fix the slow query or dependency, then drain the waiters.</dd><dt>Prevention</dt><dd>Size pools using Little's Law, and separate pools per workload. See Connection pooling <span class="muted">(not yet written)</span>.</dd></dl></div>
+<div class="failure"><h3 id="failure-limit-set-too-low">Limit set too low</h3><dl><dt>Trigger</dt><dd>A concurrency limit is copied from elsewhere or based on old measurements.</dd><dt>Symptoms</dt><dd>503 responses while the protected resource has plenty of capacity.</dd><dt>Blast radius</dt><dd>Users who get rejected unnecessarily.</dd><dt>Detection</dt><dd>Compare rejections against the utilization of the protected resource.</dd><dt>Mitigation</dt><dd>Raise the limit gradually, while watching latency.</dd><dt>Recovery</dt><dd>Set it from measured capacity.</dd><dt>Prevention</dt><dd>Derive limits from demand and revisit them, or use adaptive limits.</dd></dl></div>
+<div class="failure"><h3 id="failure-demand-grows-at-high-load">Demand grows at high load</h3><dl><dt>Trigger</dt><dd>Cache misses, lock contention, or thrashing raise cost per request as load rises.</dd><dt>Symptoms</dt><dd>Saturation arrives well before the predicted limit.</dd><dt>Blast radius</dt><dd>Capacity plans based on low-load measurements.</dd><dt>Detection</dt><dd>Compare demand per request at several load levels.</dd><dt>Mitigation</dt><dd>Run lower and investigate.</dd><dt>Recovery</dt><dd>Fix contention and re-measure.</dd><dt>Prevention</dt><dd>Load test at the planned level, as demand-based bounds are only upper limits.</dd></dl></div></section>
+<section aria-labelledby="security-and-privacy"><h2 id="security-and-privacy">Security and privacy</h2>
+<h3 id="threats">Threats</h3>
+<p>Attackers find your bottleneck too. Sending requests that take a contended lock, or that have the highest demand, gets maximum damage from minimum traffic. Slow clients can hold connections to exhaust a concurrency limit, and metrics endpoints reveal your limits and current load, which helps attackers time their traffic.</p>
+<h3 id="trust-boundaries">Trust boundaries</h3>
+<p>Protect shared resources with limits placed inside your trust boundary, so clients can't bypass them. Don't expose <code>/stats</code> publicly. Set read and write timeouts on untrusted connections, to prevent slow-client attacks from occupying slots.</p>
+<h3 id="authentication-and-authorization">Authentication and authorization</h3>
+<p>Authentication can itself be the bottleneck. Password hashing is deliberately CPU-heavy, so a login flood can saturate the tier. Run it in a separate limited pool, and apply limits before expensive checks.</p>
+<h3 id="tenant-isolation">Tenant isolation</h3>
+<p>A single global limit lets one tenant use all slots. Use per-tenant concurrency limits or fair queues, so that one tenant's slow queries reject only that tenant's traffic. See Tenant isolation and noisy-neighbor controls <span class="muted">(not yet written)</span>.</p>
+<h3 id="sensitive-data">Sensitive data</h3>
+<p>Load and queue metrics rarely contain personal data, but labels might. Do not label saturation metrics with user identifiers. Rejection logs should use hashed or tiered tenant labels where appropriate.</p>
+<h3 id="abuse-resistance">Abuse resistance</h3>
+<p>Make rejection cheaper than service, and reject before doing expensive parsing. Limit concurrency per client as well as globally. Monitor for clients that retry immediately after a 503 and ignore <code>Retry-After</code>.</p></section>
+<section aria-labelledby="observability"><h2 id="observability">Observability</h2>
+<h3 id="metrics">Metrics</h3>
+<p>For every resource, including logical ones, use the USE method: utilization, saturation, and errors. Examples: CPU per core; run queue length; Linux pressure stall information; pool active count and wait time; lock wait time; queue depth and age; rejected counts. For every service, add request rate, errors, and duration. See Golden Signals, RED, and USE methods <span class="muted">(not yet written)</span>.</p>
+<h3 id="logs">Logs</h3>
+<p>Log rejections as a sampled counter, with the reason and limiter name. Log when limits change. Avoid per-rejection logging during overload, as it could add to the problem.</p>
+<h3 id="traces">Traces</h3>
+<p>Show waits as spans: <code>pool.wait</code>, <code>lock.wait</code>, and <code>queue.wait</code>. If these aren't instrumented, they appear as unexplained gaps. Comparing wait to work in a span shows whether a slow request was doing something or merely waiting.</p>
+<h3 id="dashboards">Dashboards</h3>
+<p>Build a resource table: utilization, saturation, and errors per resource, sorted by saturation. Add a load-versus-latency scatter plot, in which the knee appears directly. Add per-instance views, so that averages don't hide a single bad node.</p>
+<h3 id="alerts">Alerts</h3>
+<p>Page on user-visible SLO burn. Warn on queue age, sustained saturation, and rising rejections. Avoid CPU threshold pages, since high CPU with short queues is efficient and low CPU with long queues is a real problem.</p>
+<h3 id="slo-examples">SLO examples</h3>
+<ul><li>Queue wait on <code>db-limiter</code> stays below 20 ms for 99% of minutes.</li><li>Under 0.1% of requests are rejected by concurrency limits over 28 days.</li><li>Bottleneck utilization stays at or below 70% at daily peak, reviewed monthly.</li></ul>
+<h3 id="runbook-actions">Runbook actions</h3>
+<p>Look for saturation first, sorted across all resources. If a logical resource is saturated, reduce pressure before scaling. If CPU saturates, check whether the tier can scale without moving load to the database. After any fix, re-measure, since the bottleneck will have moved.</p></section>
+<section aria-labelledby="implementation"><h2 id="implementation">Implementation</h2>
+<h3 id="architecture-of-the-examples">Architecture of the examples</h3>
+<p>TypeScript provides an Express service with a <code>ConcurrencyLimiter</code> around simulated database work, plus a <code>/stats</code> route. Python applies operational laws to demand data to predict limits. The Express layer is justified here, since real concurrent HTTP traffic is the thing being controlled.</p>
+<h3 id="data-structures">Data structures</h3>
+<p>The limiter has a slot count and a <code>waiters</code> array of resolver functions. Utilization is measured as slot-time: on each change, it adds <code>inFlight × elapsed</code> to a running total, then divides by <code>elapsed × limit</code>. Python's <code>Resource</code> computes effective demand as demand ÷ servers.</p>
+<h3 id="interfaces">Interfaces</h3>
+<p><code>limiter.run(work)</code> runs work under the limit, or throws <code>QueueFullError</code>. <code>limiter.stats()</code> returns a snapshot. <code>GET /query</code> returns 200 or 503 with <code>Retry-After</code>. Python exposes <code>analyze(resources, rps)</code> and <code>required_servers(resources, rps, target)</code>.</p>
+<h3 id="error-handling">Error handling</h3>
+<p><code>release</code> runs in a <code>finally</code> block, so a failed task can't leak its slot, and a test confirms it. A full queue produces a typed error mapped to 503, not a 500, since overload is an expected condition. Invalid limits are rejected at construction.</p>
+<h3 id="concurrency-considerations">Concurrency considerations</h3>
+<p>Node's single thread makes the counters safe with no atomics, but the <code>await</code> points still interleave. On release, the slot passes directly to the next waiter, with no decrement and increment, so a new arrival can't jump the queue in that gap. In Go or Rust, this logic would require a semaphore or channel, and there is some subtlety around cancelling a queued waiter. This example does not support cancelling while queued.</p>
+<h3 id="educational-limitations">Educational limitations</h3>
+<p>There's no queue timeout, so a waiter can wait as long as the queue takes to drain. The limit is fixed. Work is a sleep, so CPU contention never appears. Operational analysis assumes constant demand, so treat the result as a bound.</p>
+<h3 id="production-hardening">Production hardening</h3>
+<p>Add queue timeouts tied to deadlines, cancellation, per-tenant fairness, adaptive limits, histograms for wait time, and priorities. Measure real lock and pool waits with your database and runtime's built-in instrumentation.</p><h3 id="example-source">Example source</h3><details class="disclosure"><summary>TypeScript source: <code>examples/typescript/src/index.ts</code></summary><p><a href="examples/typescript/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-typescript">// Express service protecting a simulated database with a concurrency limit. Excess requests queue
+// briefly and are then rejected with 503, and /stats reports concurrency, utilization, and saturation.
+import { fileURLToPath } from 'node:url';
+import express from 'express';
+import type { Express, NextFunction, Request, Response } from 'express';
+import { ConcurrencyLimiter, QueueFullError } from './limiter.ts';
+
+const log = (level: string, msg: string, fields: Record&lt;string, unknown&gt; = {}): void =&gt; {
+  console.log(JSON.stringify({ ts: new Date().toISOString(), level, msg, ...fields }));
+};
+const sleep = (ms: number): Promise&lt;void&gt; =&gt; new Promise((resolve) =&gt; { setTimeout(resolve, ms); });
+
+export interface AppOptions { limit: number; queueLimit: number; workMs: number }
+
+export function createApp(opts: AppOptions): Express {
+  const app = express();
+  const limiter = new ConcurrencyLimiter(opts.limit, opts.queueLimit);
+  app.get('/healthz', (_req: Request, res: Response) =&gt; { res.json({ status: 'ok' }); });
+  app.get('/stats', (_req: Request, res: Response) =&gt; { res.json(limiter.stats()); });
+  app.get('/query', async (_req: Request, res: Response, next: NextFunction) =&gt; {
+    try {
+      await limiter.run(() =&gt; sleep(opts.workMs));
+      res.json({ ok: true });
+    } catch (err) {
+      if (err instanceof QueueFullError) {
+        res.status(503).set('Retry-After', '1').json({ error: 'Overloaded, retry later.' });
+        return;
+      }
+      next(err);
+    }
+  });
+  app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) =&gt; {
+    log('error', 'request.failed', { error: String(err) });
+    res.status(500).json({ error: 'Internal error.' });
+  });
+  return app;
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  const port = Number(process.env['PORT'] ?? 3000);
+  const server = createApp({ limit: 10, queueLimit: 20, workMs: 100 }).listen(port, () =&gt; { log('info', 'server.started', { port }); });
+  const stop = (): void =&gt; { server.close(() =&gt; { process.exit(0); }); };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+}
+</code></pre></details><details class="disclosure"><summary>Python source: <code>examples/python/app/main.py</code></summary><p><a href="examples/python/README.md">Setup and run instructions</a></p><pre class="code"><code class="language-python">&quot;&quot;&quot;Operational analysis: find the bottleneck from measured service demands, before any load test.
+
+Service demand D is the CPU, disk, or other resource time one request needs in total. These laws hold
+regardless of the arrival distribution:
+
+    Utilization law:   U = X * D
+    Bottleneck limit:  X &lt;= 1 / D_max
+    Response floor:    R &gt;= sum(D)
+    Saturation knee:   N* = (sum(D) + Z) / D_max
+&quot;&quot;&quot;
+
+from __future__ import annotations
+
+import json
+
+from pydantic import BaseModel, Field
+
+
+class Resource(BaseModel):
+    name: str
+    demand_ms: float = Field(gt=0, description=&quot;total service time per request&quot;)
+    servers: int = Field(default=1, gt=0)
+
+    @property
+    def effective_demand_ms(self) -&gt; float:
+        return self.demand_ms / self.servers
+
+
+class Row(BaseModel):
+    name: str
+    utilization_pct: float
+    status: str
+    max_rps: float
+
+
+class Report(BaseModel):
+    bottleneck: str
+    max_throughput_rps: float
+    min_response_ms: float
+    knee_concurrency: float
+    rows: list[Row]
+
+
+def classify(u: float) -&gt; str:
+    if u &gt;= 1:
+        return &quot;saturated&quot;
+    if u &gt;= 0.8:
+        return &quot;near saturation&quot;
+    return &quot;ok&quot;
+
+
+def analyze(resources: list[Resource], rps: float, think_ms: float = 0.0) -&gt; Report:
+    if not resources:
+        raise ValueError(&quot;at least one resource is required&quot;)
+    if rps &lt; 0:
+        raise ValueError(&quot;rps must be non-negative&quot;)
+    worst = max(resources, key=lambda r: r.effective_demand_ms)
+    total = sum(r.demand_ms for r in resources)
+    rows = [
+        Row(
+            name=r.name,
+            utilization_pct=round(rps * r.effective_demand_ms / 10, 1),  # rps x ms / 1000 x 100
+            status=classify(rps * r.effective_demand_ms / 1_000),
+            max_rps=round(1_000 / r.effective_demand_ms, 1),
+        )
+        for r in resources
+    ]
+    return Report(
+        bottleneck=worst.name,
+        max_throughput_rps=round(1_000 / worst.effective_demand_ms, 1),
+        min_response_ms=round(total, 1),
+        knee_concurrency=round((total + think_ms) / worst.effective_demand_ms, 1),
+        rows=rows,
+    )
+
+
+def required_servers(resources: list[Resource], rps: float, target_utilization: float) -&gt; dict[str, int]:
+    &quot;&quot;&quot;Servers per resource so that each one stays at or below the target utilization.&quot;&quot;&quot;
+    if not 0 &lt; target_utilization &lt;= 1:
+        raise ValueError(&quot;target_utilization must be in (0, 1]&quot;)
+    out = {}
+    for r in resources:
+        needed = rps * r.demand_ms / 1_000 / target_utilization
+        out[r.name] = max(1, int(needed) + (needed &gt; int(needed)))
+    return out
+
+
+SAMPLE = [
+    Resource(name=&quot;web_cpu&quot;, demand_ms=8, servers=8),
+    Resource(name=&quot;app_cpu&quot;, demand_ms=25, servers=16),
+    Resource(name=&quot;db_cpu&quot;, demand_ms=6, servers=8),
+    Resource(name=&quot;db_disk&quot;, demand_ms=4, servers=2),
+    Resource(name=&quot;db_row_lock&quot;, demand_ms=2.5, servers=1),
+]
+
+
+def main() -&gt; int:
+    print(json.dumps({
+        &quot;at_300_rps&quot;: analyze(SAMPLE, 300).model_dump(),
+        &quot;at_450_rps&quot;: analyze(SAMPLE, 450).model_dump(),
+        &quot;servers_for_1000_rps_at_70pct&quot;: required_servers(SAMPLE, 1_000, 0.7),
+    }, indent=2))
+    return 0
+
+
+if __name__ == &quot;__main__&quot;:
+    raise SystemExit(main())
+</code></pre></details></section>
+<section aria-labelledby="terminal-lab"><h2 id="terminal-lab">Terminal lab</h2>
+<h3 id="setup">Setup</h3>
+<pre class="code"><code class="language-bash">cd topics/concurrency-utilization-saturation-and-bottlenecks/examples/typescript
+pnpm install --ignore-workspace</code></pre>
+<h3 id="run">Run</h3>
+<p>Start the service, which has a limit of 10 slots, a queue of 20, and 100 ms of work:</p>
+<pre class="code"><code class="language-bash">PORT=3000 pnpm start</code></pre>
+<p>In another terminal, send 60 requests at once, then read the stats:</p>
+<pre class="code"><code class="language-bash">seq 1 60 | xargs -P 60 -I{} curl -s -o /dev/null -w '%{http_code}\n' localhost:3000/query | sort | uniq -c</code></pre>
+<pre class="code"><code class="language-bash">curl -s localhost:3000/stats | jq -c .</code></pre>
+<p>Now predict a real system's limit:</p>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run python -m app.main | jq -c '.at_300_rps | {bottleneck,max_throughput_rps,min_response_ms,knee_concurrency}'</code></pre>
+<pre class="code"><code class="language-bash">uv run python -m app.main | jq -c '.at_450_rps.rows[] | {name,utilization_pct,status}'</code></pre>
+<p>On Linux, look at real saturation signals:</p>
+<pre class="code"><code class="language-bash">vmstat 1 5</code></pre>
+<pre class="code"><code class="language-bash">cat /proc/pressure/cpu</code></pre>
+<h3 id="test">Test</h3>
+<pre class="code"><code class="language-bash">cd ../typescript &amp;&amp; pnpm test</code></pre>
+<pre class="code"><code class="language-bash">cd ../python &amp;&amp; uv run pytest -q</code></pre>
+<h3 id="expected-output">Expected output</h3>
+<p>Measured on the review date. With 60 requests at once, 10 run and 20 queue, and the other 30 are rejected:</p>
+<pre class="code"><code class="language-text">  30 200
+  30 503</code></pre>
+<p>After two such rounds, the stats read:</p>
+<pre class="code"><code class="language-json">{&quot;inFlight&quot;:0,&quot;limit&quot;:10,&quot;queued&quot;:0,&quot;queueLimit&quot;:20,&quot;utilization&quot;:0.17,&quot;completed&quot;:60,&quot;rejected&quot;:60,&quot;meanWaitMs&quot;:90.4}</code></pre>
+<p>Utilization of 0.17 shows that the service was idle between bursts, so an average over time hid a total overload. That's the lesson's point in one number. The mean wait is near 100 ms, since the three groups of ten waited 0, 100, and 200 ms. Your split may vary slightly if your machine launches curl slowly. The analysis prints:</p>
+<pre class="code"><code class="language-json">{&quot;bottleneck&quot;:&quot;db_row_lock&quot;,&quot;max_throughput_rps&quot;:400.0,&quot;min_response_ms&quot;:45.5,&quot;knee_concurrency&quot;:18.2}
+{&quot;name&quot;:&quot;web_cpu&quot;,&quot;utilization_pct&quot;:45.0,&quot;status&quot;:&quot;ok&quot;}
+{&quot;name&quot;:&quot;app_cpu&quot;,&quot;utilization_pct&quot;:70.3,&quot;status&quot;:&quot;ok&quot;}
+{&quot;name&quot;:&quot;db_cpu&quot;,&quot;utilization_pct&quot;:33.8,&quot;status&quot;:&quot;ok&quot;}
+{&quot;name&quot;:&quot;db_disk&quot;,&quot;utilization_pct&quot;:90.0,&quot;status&quot;:&quot;near saturation&quot;}
+{&quot;name&quot;:&quot;db_row_lock&quot;,&quot;utilization_pct&quot;:112.5,&quot;status&quot;:&quot;saturated&quot;}</code></pre>
+<h3 id="cleanup">Cleanup</h3>
+<p>Stop the service with Ctrl-C, then:</p>
+<pre class="code"><code class="language-bash">rm -rf ../typescript/node_modules .venv</code></pre>
+<h3 id="troubleshooting">Troubleshooting</h3>
+<ul><li><code>/proc/pressure</code> exists only on Linux kernels with pressure stall information enabled. On macOS, use <code>vm_stat</code> and <code>iostat</code>.</li><li>Fewer 503 responses than expected: curl is starting too slowly to create overlap, so raise the count to 200.</li><li><code>EADDRINUSE</code>: change <code>PORT</code>, or find the holder using <code>lsof -i :3000</code>.</li></ul></section>
+<section aria-labelledby="practical-challenges"><h2 id="practical-challenges">Practical challenges</h2>
+<div class="challenge"><h3 id="challenge-concept"><span class="tag">Concept</span> Name the signal</h3><p>For each observation, say if it shows concurrency, utilization, saturation, or errors, and what you'd conclude: (a) load average is 40 on 8 cores, (b) 12 active of 20 connections, zero waiting, (c) pool wait averaging 300 ms, (d) disk 95% busy with a queue depth of 0.1.</p><details class="disclosure"><summary>Hint</summary><p>Saturation means work is waiting. Being busy with no queue isn't yet a problem.</p></details><details class="disclosure"><summary>Solution</summary><p>(a) Saturation of runnable or blocked tasks, as many wait, though on Linux, load average also includes uninterruptible I/O, so check further. (b) Concurrency with room to spare: fine. (c) Saturation of the pool: either it's too small or queries are slow. (d) High utilization with almost no queue: it's busy but not limiting, and for devices with internal parallelism such as SSDs, &quot;100% busy&quot; doesn't even mean full.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Treating every high percentage as a problem. Reading load average as purely CPU on Linux.</p></details></div>
+<div class="challenge"><h3 id="challenge-debugging"><span class="tag">Debugging</span> Low CPU, long latency</h3><p>A Node.js service on an 8-core machine shows 13% CPU, and latency has climbed from 20 ms to 900 ms at the same request rate. What would you check, and in what order? What single number gives the fastest answer?</p><details class="disclosure"><summary>Hint</summary><p>13% of 8 cores is about what one busy core looks like.</p></details><details class="disclosure"><summary>Solution</summary><p>One core at 100% across 8 cores is 12.5%, so the event loop is probably pinned. The fastest number is event-loop lag or per-thread CPU. Then take a CPU profile to find the blocking function, such as a synchronous JSON parse of a large payload, a slow regular expression, or synchronous crypto. Fix: offload to a worker, stream, or run more processes. If per-thread CPU is low, check waits on connection pools and downstream services instead. See CPU, heap, lock-contention, and I/O profiling <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Concluding from 13% that CPU isn't the problem. Adding more machines before profiling.</p></details></div>
+<div class="challenge"><h3 id="challenge-capacity"><span class="tag">Capacity</span> Find the limit and size the fix</h3><p>Measured demands: API CPU 12 ms on 24 cores, cache 1 ms on 4 cores, database CPU 10 ms on 16 cores, one global sequence lock at 3 ms, and storage at 8 ms across 8 volumes. Find X_max and the bottleneck. Then find the next one after you remove the lock with 8 partitions, and the new X_max.</p><details class="disclosure"><summary>Hint</summary><p>Max rate = servers ÷ demand. Compute it for each.</p></details><details class="disclosure"><summary>Solution</summary><p>API: 24 ÷ 0.012 = 2,000. Cache: 4 ÷ 0.001 = 4,000. Database CPU: 16 ÷ 0.010 = 1,600. Lock: 1 ÷ 0.003 = 333. Storage: 8 ÷ 0.008 = 1,000. So X_max = 333 per second, set by the lock. After 8 partitions, the lock gives 2,667, and storage at 1,000 becomes the bottleneck, so X_max = 1,000. A tripling, from removing one lock. To go beyond, add storage.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Forgetting to divide by server count. Stopping after fixing the first bottleneck, without computing the next one.</p></details></div>
+<div class="challenge"><h3 id="challenge-design"><span class="tag">Design</span> Place the limits</h3><p>A service calls a shared database and a slower partner API. Partner calls take 500 ms, and database calls 5 ms. At 1,000 requests per second, 10% call the partner, and all call the database. How would you size and arrange limits and pools? What happens if the partner slows to 5 s with one shared pool?</p><details class="disclosure"><summary>Hint</summary><p>Use Little's Law for each dependency, and then for the slowdown case.</p></details><details class="disclosure"><summary>Solution</summary><p>Database: 1,000 × 0.005 = 5 in flight, so a pool of perhaps 20. Partner: 100 per second × 0.5 s = 50 in flight, so a limit of perhaps 75. With a slowdown to 5 s: 100 × 5 = 500 in flight. In one shared pool or thread pool, partner calls would take all the slots, and database calls would starve, taking everything down. Separate limits (bulkheads) cap partner work at 75, rejecting the rest, while database traffic remains healthy. Add a short timeout and a circuit breaker. See Bulkheads and isolation pools <span class="muted">(not yet written)</span> and Circuit breakers <span class="muted">(not yet written)</span>.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Sizing for normal conditions only. Using one pool since it's simple, so that a slow partner takes down unrelated features.</p></details></div>
+<div class="challenge"><h3 id="challenge-incident"><span class="tag">Incident</span> Scale-out made things worse</h3><p>At peak, autoscaling added 50% more application instances. Database CPU went from 60% to 95%, and throughput fell. Explain this with these concepts. What's your immediate action and your lasting fix?</p><details class="disclosure"><summary>Hint</summary><p>Where was the bottleneck? How does each instance affect connections and concurrency at the database?</p></details><details class="disclosure"><summary>Solution</summary><p>The application tier wasn't the bottleneck. More instances meant more concurrent queries and more connections at the database, beyond its knee, raising contention and context switching, so demand per query rose and throughput dropped. Immediately: reduce concurrency at the database by capping instances, lowering per-instance pools, or enabling a shared connection proxy, then shed optional traffic. Lasting fix: limit total database concurrency with a proxy, tie autoscaling limits to database capacity, and alert on database saturation in scaling decisions.</p></details><details class="disclosure"><summary>Common mistakes</summary><p>Scaling the database first without looking at concurrency. Treating autoscaling as safe by default.</p></details></div></section>
+<section aria-labelledby="industry-standards-and-trends"><h2 id="industry-standards-and-trends">Industry standards and trends</h2>
+<h3 id="standards-and-specifications">Standards and specifications</h3>
+<p><a href="https://www.rfc-editor.org/rfc/rfc9110.html" rel="noopener noreferrer">RFC 9110</a>, June 2022, defines 503 and <code>Retry-After</code>, which signal overload. <a href="https://docs.kernel.org/accounting/psi.html" rel="noopener noreferrer">Linux pressure stall information</a>, in kernel documentation, standardizes saturation signals on Linux. These operational laws come from research, in particular <a href="https://doi.org/10.1145/356733.356735" rel="noopener noreferrer">The Operational Analysis of Queueing Network Models</a>, Denning and Buzen, 1978.</p>
+<h3 id="established-practice">Established practice</h3>
+<p><a href="https://www.brendangregg.com/usemethod.html" rel="noopener noreferrer">The USE Method</a>, by Brendan Gregg, gives a checklist for each resource. The <a href="https://sre.google/sre-book/monitoring-distributed-systems/" rel="noopener noreferrer">Four Golden Signals</a>, in <em>Site Reliability Engineering</em>, 2016, includes saturation. These are widely used conventions, not formal standards.</p>
+<h3 id="managed-service-options">Managed-service options</h3>
+<p>Managed databases expose connection counts, and often wait-event data. Connection proxies from cloud vendors limit concurrency toward a database. Serverless platforms have per-function concurrency settings that behave as limits. Check what happens when you reach each one, since it might queue or reject.</p>
+<h3 id="emerging-approaches">Emerging approaches</h3>
+<p>Adaptive concurrency limits, such as Netflix's open-source <a href="https://github.com/Netflix/concurrency-limits" rel="noopener noreferrer">concurrency-limits</a> library, adjust limits from measured latency. eBPF tools measure off-CPU time and lock waits with low overhead. GPU workloads are now common bottlenecks whose utilization metric can mislead, since a busy indicator doesn't reveal how fully the device is used. Evaluate each against your own workload.</p>
+<h3 id="recent-changes">Recent changes</h3>
+<p>Pressure stall information is widely available in current Linux distributions and is used by container tools. Check your kernel version and configuration. No standards change was identified at the review date.</p>
+<h3 id="adoption-constraints">Adoption constraints</h3>
+<p>Rejecting traffic needs clients that back off, and many don't. Adaptive limiters need careful evaluation for stability. Logical resources require instrumentation in application code, which takes ongoing effort.</p><p class="muted">Links in this section were checked on 2026-11-03 (access date). Items labelled as emerging or inferred are not settled facts and should be re-checked before you rely on them.</p></section>
+<section aria-labelledby="interview-preparation"><h2 id="interview-preparation">Interview preparation</h2>
+<details class="qa"><summary><span class="tag">Foundational</span> What is the difference between utilization and saturation?</summary><p><strong>Strong answer.</strong> Utilization is how busy a resource is. Saturation is how much work is waiting for it. A resource can be 95% busy with no queue, which is efficient, or show low average use with long queues, due to bursts or a lock. Saturation is usually the more direct signal of a problem.</p>
+<p><strong>Why it is asked.</strong> It's fundamental to reading any dashboard.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating the two as the same.</p>
+<p><strong>Follow-up.</strong> Give a saturation metric for CPU, for disk, and for a thread pool.</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> What is a bottleneck?</summary><p><strong>Strong answer.</strong> The resource that limits throughput, which saturates first as load rises. Improving anything else doesn't raise throughput. Fixing it moves the bottleneck elsewhere, so this is iterative.</p>
+<p><strong>Why it is asked.</strong> It's the first concept in performance work.</p>
+<p><strong>Weak-answer warning signs.</strong> Only considering CPU, memory, and disk.</p>
+<p><strong>Follow-up.</strong> Name a bottleneck that doesn't show up in infrastructure metrics.</p></details>
+<details class="qa"><summary><span class="tag">Foundational</span> Use Little's Law: 500 requests per second at 40 ms. How many are in flight?</summary><p><strong>Strong answer.</strong> L = X × R = 500 × 0.04 = 20. If latency doubles at the same rate, concurrency doubles to 40, which may exhaust a pool. That's why slow dependencies cause pool problems.</p>
+<p><strong>Why it is asked.</strong> It's a simple check on quantitative reasoning.</p>
+<p><strong>Weak-answer warning signs.</strong> Forgetting to convert milliseconds to seconds.</p>
+<p><strong>Follow-up.</strong> What does this say about a pool of 25 connections?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How can a server have low CPU and be overloaded?</summary><p><strong>Strong answer.</strong> A single-threaded process pins one core, which averages low on many cores. Or requests wait on a lock, connection pool, disk, or downstream service, consuming no CPU. I would check per-thread CPU, event-loop lag, and off-CPU or pool wait time.</p>
+<p><strong>Why it is asked.</strong> It reveals real diagnostic experience.</p>
+<p><strong>Weak-answer warning signs.</strong> Concluding that low CPU means there's capacity.</p>
+<p><strong>Follow-up.</strong> How would you measure off-CPU time?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> How would you predict a system's maximum throughput without a load test?</summary><p><strong>Strong answer.</strong> Measure service demand per request per resource, including logical ones such as locks. Maximum throughput is the minimum of servers ÷ demand. That's an upper bound, as contention can raise demand at load, so I would confirm it with a test.</p>
+<p><strong>Why it is asked.</strong> Few people know this powerful, cheap technique.</p>
+<p><strong>Weak-answer warning signs.</strong> Only saying &quot;run a load test&quot;.</p>
+<p><strong>Follow-up.</strong> What makes demand change with load?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> Why might you limit concurrency instead of rate?</summary><p><strong>Strong answer.</strong> Concurrency reflects actual pressure on a resource. If a dependency slows, the same rate produces more in flight, so a rate limit lets overload through, while a concurrency limit reacts without reconfiguration. I'd use rate limits for fairness and quotas and concurrency limits for protection.</p>
+<p><strong>Why it is asked.</strong> It distinguishes two controls that are often confused.</p>
+<p><strong>Weak-answer warning signs.</strong> Believing rate limits cover everything.</p>
+<p><strong>Follow-up.</strong> How do you choose the limit's value?</p></details>
+<details class="qa"><summary><span class="tag">Senior</span> What target utilization would you run at?</summary><p><strong>Strong answer.</strong> It depends on variability, pooling, and latency targets. A large pool of servers can run high with short waits, while a single lock or thread can't. I'd derive it from the wait target and test it, and set the failure case separately, since losing a zone raises utilization by half.</p>
+<p><strong>Why it is asked.</strong> It shows you avoid rules of thumb where they don't apply.</p>
+<p><strong>Weak-answer warning signs.</strong> A single universal number.</p>
+<p><strong>Follow-up.</strong> Why do pooled servers tolerate higher utilization than dedicated ones?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> Adding instances made throughput fall. Explain, and say what you'd do.</summary><p><strong>Strong answer.</strong> The instances weren't the bottleneck. More of them raised concurrency against a shared resource, pushing it beyond its knee, with more contention. I would limit total concurrency at that resource, for example through a proxy, cap autoscaling to what downstream can handle, then address the shared resource by partitioning, batching, or caching.</p>
+<p><strong>Why it is asked.</strong> Autoscaling-induced failures are common in production.</p>
+<p><strong>Weak-answer warning signs.</strong> Assuming horizontal scaling always helps.</p>
+<p><strong>Follow-up.</strong> How would you make autoscaling aware of database capacity?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How do you size connection pools across a fleet?</summary><p><strong>Strong answer.</strong> Compute needed concurrency: rate × query time. Then divide the database's safe total concurrency across instances, leaving room for autoscaling and deployment overlap. Pools multiply by instance count, so a harmless-looking 50 can become 5,000. Often a shared proxy is safest, and short queues help bound waiting.</p>
+<p><strong>Why it is asked.</strong> It's a frequent cause of real outages.</p>
+<p><strong>Weak-answer warning signs.</strong> Choosing a pool size in isolation.</p>
+<p><strong>Follow-up.</strong> What happens to connection count during a rolling deployment?</p></details>
+<details class="qa"><summary><span class="tag">Staff</span> How would you find a bottleneck in a system you've never seen?</summary><p><strong>Strong answer.</strong> I would walk the USE method through every resource on the request path, starting with those that show saturation. Then I'd read traces of slow requests for waiting versus working. Then a load-versus-latency plot, to find the knee, and see what saturates there. I'd also ask what nobody is measuring.</p>
+<p><strong>Why it is asked.</strong> It tests a repeatable method, under uncertainty.</p>
+<p><strong>Weak-answer warning signs.</strong> Guessing based on familiar technology.</p>
+<p><strong>Follow-up.</strong> Everything looks fine at current load. How do you find the next bottleneck?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> How do you decide whether to remove a bottleneck or live with it?</summary><p><strong>Strong answer.</strong> Compare the forecast with the limit: how long before we reach it, and what's the business effect? Then compare the cost of each option: more capacity, a design change, demand reduction, or a deliberate cap with rejection. Sometimes a known limit, well protected, is the right choice for a while.</p>
+<p><strong>Why it is asked.</strong> Principals decide what not to fix.</p>
+<p><strong>Weak-answer warning signs.</strong> Treating every bottleneck as something to eliminate now.</p>
+<p><strong>Follow-up.</strong> How do you ensure that a known limit stays visible over the years?</p></details>
+<details class="qa"><summary><span class="tag">Principal</span> Multiple teams share a database that's nearing its limit. How do you organize capacity?</summary><p><strong>Strong answer.</strong> Make it an owned resource, with per-consumer attribution using demand, not requests. Give teams quotas and a clear escalation path. Then invest in removing the largest consumers' demand, or give them separate stores. The key change is that sharing becomes explicit, so one team's launch can't quietly take another team's capacity.</p>
+<p><strong>Why it is asked.</strong> It's a shared-resource governance problem, not a tuning problem.</p>
+<p><strong>Weak-answer warning signs.</strong> Offering only technical fixes.</p>
+<p><strong>Follow-up.</strong> How would you price or allocate quota fairly?</p></details></section>
+<section aria-labelledby="review"><h2 id="review">Review</h2>
+<h3 id="key-takeaways">Key takeaways</h3>
+<ul><li>Concurrency is how many are in progress, utilization is how busy, and saturation is how much is waiting.</li><li>U = X × D, and X ≤ c ÷ D, so demand measurements predict limits.</li><li>L = X × R links rate, latency, and concurrency.</li><li>Averages hide bursts, single-threaded limits, and logical resources.</li><li>Limit concurrency in front of a bottleneck, and reject the excess cheaply.</li><li>Fixing a bottleneck reveals the next one, so measure again.</li></ul>
+<h3 id="decision-checklist">Decision checklist</h3>
+<ul class="checklist"><li>Which resources are on the path, including locks and pools?</li><li>What is each resource's demand and server count?</li><li>Which one has the lowest maximum rate?</li><li>Is any queue growing right now?</li><li>What's the next bottleneck after this fix?</li></ul>
+<h3 id="production-readiness-checklist">Production-readiness checklist</h3>
+<ul class="checklist"><li>Every bounded resource exports utilization and saturation.</li><li>Slow traces separate waiting from working.</li><li>Limits and queues are bounded, and they reject cheaply.</li><li>Autoscaling maximums respect downstream limits.</li><li>Failure capacity has been computed per resource.</li></ul>
+<h3 id="glossary">Glossary</h3>
+<ul><li><strong>Service demand:</strong> total time a request needs from a resource.</li><li><strong>Knee:</strong> the concurrency beyond which waiting grows.</li><li><strong>USE method:</strong> a check of utilization, saturation, and errors for every resource.</li><li><strong>Off-CPU time:</strong> time a thread spends blocked or waiting.</li><li><strong>Bulkhead:</strong> isolating resources so that one failure can't drain all capacity.</li><li><strong>Pressure stall information:</strong> a Linux metric reporting time lost waiting on a resource.</li></ul>
+<h3 id="quiz">Quiz</h3>
+<form class="quiz" data-correct="2"><fieldset><legend>1. A single lock has a hold time of 2.5 ms. What is its maximum rate?</legend><label><input type="radio" name="quiz-0" value="0"> 2,500 per second</label><label><input type="radio" name="quiz-0" value="1"> 1,000 per second</label><label><input type="radio" name="quiz-0" value="2"> 400 per second</label><label><input type="radio" name="quiz-0" value="3"> 40 per second</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 400 per second.</p><p>1 ÷ 0.0025 s = 400 per second, however many servers call it.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>2. One core is pinned on a 16-core machine. What does average CPU show?</legend><label><input type="radio" name="quiz-1" value="0"> 100%</label><label><input type="radio" name="quiz-1" value="1"> 50%</label><label><input type="radio" name="quiz-1" value="2"> About 6%</label><label><input type="radio" name="quiz-1" value="3"> 0%</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> About 6%.</p><p>1 ÷ 16 = 6.25%, which is why average CPU can hide a single-threaded limit.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>3. At 1,000 requests per second and 60 ms, how many requests are in flight?</legend><label><input type="radio" name="quiz-2" value="0"> 6</label><label><input type="radio" name="quiz-2" value="1"> 60</label><label><input type="radio" name="quiz-2" value="2"> 600</label><label><input type="radio" name="quiz-2" value="3"> 1,000</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> 60.</p><p>L = 1,000 × 0.06 = 60.</p></details></fieldset></form>
+<form class="quiz" data-correct="1"><fieldset><legend>4. Disk is at 90% and a row lock at 112.5%. What should you fix first?</legend><label><input type="radio" name="quiz-3" value="0"> The disk, because it's a hardware metric.</label><label><input type="radio" name="quiz-3" value="1"> The lock, because it is past its limit and sets current throughput.</label><label><input type="radio" name="quiz-3" value="2"> Neither, since both are under 200%.</label><label><input type="radio" name="quiz-3" value="3"> CPU, by default.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> The lock, because it is past its limit and sets current throughput..</p><p>The lock caps throughput at 400 per second. Upgrading the disk wouldn't help until the lock moves.</p></details></fieldset></form>
+<form class="quiz" data-correct="2"><fieldset><legend>5. Why can a concurrency limit react better to a slow dependency than a rate limit?</legend><label><input type="radio" name="quiz-4" value="0"> It uses less memory.</label><label><input type="radio" name="quiz-4" value="1"> It's always stricter.</label><label><input type="radio" name="quiz-4" value="2"> In-flight work rises automatically when latency rises, at the same request rate.</label><label><input type="radio" name="quiz-4" value="3"> It removes the need for timeouts.</label><p class="quiz-feedback" role="status" aria-live="polite"></p><details class="disclosure"><summary>Answer and explanation</summary><p><strong>Answer:</strong> In-flight work rises automatically when latency rises, at the same request rate..</p><p>Little's Law means slower responses raise concurrency. The limit responds with no reconfiguration, while a rate limit wouldn't notice.</p></details></fieldset></form>
+<h3 id="further-study">Further study</h3>
+<p>Go on to Little’s Law and practical queueing theory <span class="muted">(not yet written)</span> for how waits grow near saturation, CPU, heap, lock-contention, and I/O profiling <span class="muted">(not yet written)</span> for measuring these resources with profilers, and Golden Signals, RED, and USE methods <span class="muted">(not yet written)</span> for monitoring methods. Load shedding and admission control <span class="muted">(not yet written)</span> covers what to do when saturation arrives anyway.</p></section>
+<section aria-labelledby="progress"><h2 id="progress">Progress</h2>
+<div class="progress-controls js-only"><span id="topic-status" role="status" aria-live="polite"></span>
+<button type="button" data-set-status="in-progress">Mark in progress</button>
+<button type="button" data-set-status="complete">Mark complete</button>
+<button type="button" data-set-status="not-started">Reset progress</button></div>
+<p class="muted">Progress is stored only in this browser. Export it from the <a href="../../index.html">curriculum page</a>.</p>
+<nav class="pager" aria-label="Previous and next">
+<span>Previous: <a href="../../topics/latency-budgets-and-critical-path-analysis/index.html">Latency budgets and critical-path analysis</a></span>
+<a href="../../index.html">Return to curriculum</a>
+<span></span>
+</nav></section>
+</main></div>
+<footer class="site-footer"><p>Educational material. Company names describe a class of system, not a private architecture.</p></footer>
+</body>
+</html>

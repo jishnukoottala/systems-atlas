@@ -1,0 +1,15 @@
+---
+title: "Sequence: challenging a constraint"
+---
+sequenceDiagram
+    participant A as Architect
+    participant O as Platform owner
+    participant F as Finance
+    participant D as ADR
+    A->>O: Why is the shared Oracle cluster mandatory?
+    O-->>A: Licence cost, and a small DBA team
+    A->>F: Option A costs X in licences. Option B costs Y in operations
+    F-->>A: Licence renews in 14 months and is not fixed
+    A->>O: Can telemetry use another store, if your team does not run it?
+    O-->>A: Yes, if the owning team carries on-call
+    A->>D: Record the lifted constraint, conditions, and owner

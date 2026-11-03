@@ -1,0 +1,16 @@
+---
+title: "Sequence: a hedged call with cancellation"
+---
+sequenceDiagram
+    participant C as Coordinator
+    participant B as Hedge budget
+    participant A1 as Replica A
+    participant A2 as Replica B
+    C->>A1: Search shard 2
+    Note over A1: Stalled by a merge
+    C->>B: Timer fired at 50 ms. Hedge allowed?
+    B-->>C: Yes, one token used
+    C->>A2: Same search
+    A2-->>C: Result after 12 ms
+    C->>A1: Cancel
+    Note over C: Shard took 62 ms in place of 1,000 ms

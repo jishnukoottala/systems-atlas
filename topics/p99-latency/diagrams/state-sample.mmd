@@ -1,0 +1,13 @@
+---
+title: "Path of one latency sample to a reported percentile"
+---
+stateDiagram-v2
+    [*] --> Measured: request finishes
+    [*] --> Lost: process killed or client disconnected unrecorded
+    Measured --> Bucketed: counter incremented
+    Bucketed --> Exported: scrape or push
+    Exported --> Merged: counts summed by bucket
+    Merged --> Reported: quantile computed at query time
+    Bucketed --> Lost: instance dies before export
+    Reported --> [*]
+    Lost --> [*]

@@ -1,0 +1,10 @@
+---
+title: "Component view of the requirement linter and evidence checker"
+---
+flowchart LR
+    A["Author or CI job"] -->|"HTTP POST /lint, JSON"| API["Express API: input validation"]
+    API --> L["Lint rules: missing metric, target, window, load; vague words"]
+    L -->|"findings, pass or fail"| A
+    MS["Metrics export: JSON file"] -->|"measurements"| E["Python checker: Pydantic models"]
+    S["Spec file in repository"] -->|"requirements"| E
+    E -->|"verdict and exit code"| CI["CI gate"]
